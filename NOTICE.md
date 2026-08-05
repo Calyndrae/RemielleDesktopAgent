@@ -58,6 +58,18 @@ be taken out.
 
 ---
 
+## Bundled font
+
+**Noto Serif SC** is vendored in `src/assets/fonts/`, under the
+[SIL Open Font License 1.1](src/assets/fonts/OFL.txt) — see that file for the
+full terms. Copyright the Noto Project Authors.
+
+It is committed rather than linked from a CDN because the app must render
+correctly with no network, and the webview's content-security policy blocks
+external hosts. It ships as ~100 `unicode-range` subsets, so a conversation only
+loads the ranges it actually uses. Regenerate with
+`node scripts/vendor-fonts.mjs`.
+
 ## Third-party software
 
 Runtime and build dependencies are listed in `package.json` and

@@ -131,7 +131,7 @@ export function SettingsApp() {
             {config.providers.map((info) => (
               <option key={info.id} value={info.id}>
                 {info.label}
-                {config.configured.includes(info.id) ? " ✓" : ""}
+                {config.configured.includes(info.id) ? "（已配置）" : ""}
               </option>
             ))}
           </select>
@@ -308,7 +308,7 @@ export function SettingsApp() {
           <span className="field__hint">
             {canSearch
               ? "开启后，她可以在回答前查资料。用过的搜索词和网页会显示在回复上方，随时可以点开核对。聊天框里也有开关，可以单次临时关掉。"
-              : `${provider?.label ?? "当前服务商"}没有自带联网搜索，所以这里是灰的。DeepSeek 等服务商的搜索会在后续版本用「搜索 → 选链接 → 抓正文」的方式补上。`}
+              : `${provider?.label ?? "当前服务商"}没有自带联网搜索，所以这里是灰的。DeepSeek 等服务商的搜索会在后续版本用「先搜索、再让她挑链接、然后抓正文」的方式补上。`}
           </span>
         </div>
 

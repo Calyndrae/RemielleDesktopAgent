@@ -39,6 +39,9 @@ testing, sprite rendering, drag) is in progress; nothing is shippable yet.
 
 Tauri v2 · React 19 · TypeScript · Rust
 
+Typography is **Noto Serif SC**, vendored under the SIL Open Font License —
+see [NOTICE.md](NOTICE.md).
+
 Windows is the shipping target. Platform-specific code is isolated in
 `src-tauri/src/platform/` so a macOS port is additive rather than invasive.
 

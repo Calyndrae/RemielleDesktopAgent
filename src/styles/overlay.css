@@ -66,7 +66,13 @@
 
   --focus-ring: 0 0 0 2px rgba(245, 168, 199, 0.6);
 
-  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  /*
+   * Noto Serif SC, vendored rather than linked: the app has to render correctly
+   * with no network, and the webview CSP blocks external hosts anyway. It ships
+   * as ~100 unicode-range subsets, so a conversation only loads the ranges it
+   * actually touches.
+   */
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
   font-size: var(--fs-base);
   color: var(--text);
 }

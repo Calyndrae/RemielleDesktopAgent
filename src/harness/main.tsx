@@ -9,6 +9,7 @@ import { ContextMenu } from "@/overlay/ContextMenu";
 import { FaultPanel } from "@/overlay/FaultPanel";
 import { setSpriteFrame } from "@/overlay/spritePosition";
 import { useChatStore, type ChatMessage } from "@/state/chat";
+import "@/assets/fonts/noto-serif-sc.css";
 import "@/styles/overlay.css";
 import "@/styles/chat.css";
 
