@@ -41,7 +41,17 @@ function message(
   status: ChatMessage["status"] = "done",
   reasoning = "",
 ): ChatMessage {
-  return { id, role, chunks: [text], reasoning, status, createdAt: Date.now() };
+  return {
+    id,
+    role,
+    chunks: [text],
+    reasoning,
+    tools: [],
+    usage: null,
+    error: null,
+    status,
+    createdAt: Date.now(),
+  };
 }
 
 const CONVERSATION: ChatMessage[] = [

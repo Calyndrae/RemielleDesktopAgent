@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { ipc, type OverlayGeometry } from "@/lib/ipc";
+import { openSettings } from "@/lib/settingsWindow";
 import { useAgentStore } from "@/state/agent";
-import { useChatStore } from "@/state/chat";
+import { attachChatEvents, useChatStore } from "@/state/chat";
+import { useConfigStore } from "@/state/config";
 import { useSpriteStore } from "@/state/sprite";
 import { getMessages, resolveLocale, type Locale } from "@/i18n";
 import type { PackManifest } from "@/types/pack";
@@ -28,7 +30,13 @@ export function App() {
   const bootstrap = useCallback(async () => {
     setError(null);
     try {
-      await useSpriteStore.getState().hydrate();
+      await Promise.all([
+        useSpriteStore.getState().hydrate(),
+        useConfigStore.getState().hydrate(),
+        // Subscribe before any request can be started, or the first tokens of
+        // the first reply would arrive with nothing listening.
+        attachChatEvents(),
+      ]);
 
       // Place and reveal the overlay before loading the pack, so a missing
       // pack still has a surface to report itself on.
@@ -101,6 +109,11 @@ export function App() {
       id: "emote",
       label: messages.menu.changeEmote,
       onSelect: cycleEmote,
+    },
+    {
+      id: "settings",
+      label: messages.menu.settings,
+      onSelect: () => void openSettings(),
     },
     {
       id: "new-chat",

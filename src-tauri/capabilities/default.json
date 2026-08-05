@@ -18,8 +18,14 @@
     "core:window:allow-scale-factor",
     "core:window:allow-outer-position",
     "core:window:allow-inner-size",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
     "core:webview:allow-create-webview-window",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+    },
     "dialog:default",
     "store:default",
     "os:default",

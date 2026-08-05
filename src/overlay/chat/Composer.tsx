@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef } from "react";
 
 import { COUNTER_THRESHOLD, MAX_INPUT_LENGTH, useChatStore } from "@/state/chat";
+import { currentProvider, searchAvailable, useConfigStore } from "@/state/config";
+import { openSettings } from "@/lib/settingsWindow";
 import { Icon } from "./icons";
 
 /** Textarea stops growing here and scrolls internally instead. */
@@ -11,6 +13,11 @@ export function Composer() {
 
   const draft = useChatStore((s) => s.draft);
   const streaming = useChatStore((s) => s.streaming);
+
+  const model = useConfigStore((s) => s.model);
+  const webSearch = useConfigStore((s) => s.webSearch);
+  const providerLabel = useConfigStore((s) => currentProvider(s)?.label ?? s.provider);
+  const canSearch = useConfigStore(searchAvailable);
 
   // Grow to fit the content, then hand over to the scrollbar. Resetting to
   // `auto` first is what lets it shrink again when text is deleted.
@@ -58,11 +65,37 @@ export function Composer() {
             <Icon.Plus size={17} />
           </button>
 
-          <button type="button" className="modelpill" title="切换模型">
-            <span className="modelpill__name">DeepSeek</span>
-            <span className="modelpill__variant">Reasoner</span>
+          <button
+            type="button"
+            className="modelpill"
+            title="在设置里切换模型"
+            onClick={openSettings}
+          >
+            <span className="modelpill__name">{providerLabel}</span>
+            <span className="modelpill__variant">{model || "未选择模型"}</span>
             <Icon.ChevronDown size={12} className="modelpill__caret" />
           </button>
+
+          {/*
+            Shown only when the provider actually has search. An enabled-looking
+            switch that silently does nothing is worse than no switch.
+          */}
+          {canSearch && (
+            <button
+              type="button"
+              className={`searchtoggle${webSearch ? " searchtoggle--on" : ""}`}
+              aria-pressed={webSearch}
+              onClick={() => useConfigStore.getState().patch({ webSearch: !webSearch })}
+              title={
+                webSearch
+                  ? "联网搜索已开启 —— 点击关闭"
+                  : "联网搜索已关闭 —— 点击开启"
+              }
+            >
+              <Icon.Globe size={14} />
+              <span>联网</span>
+            </button>
+          )}
 
           <div className="composer__spacer" />
 

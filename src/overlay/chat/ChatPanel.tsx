@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { DEFAULT_FLIGHT, flightPose, poseToTransform } from "@/anim/parabola";
 import type { OverlayGeometry } from "@/lib/ipc";
+import { openSettings } from "@/lib/settingsWindow";
 import { useChatStore } from "@/state/chat";
 import { getSpriteFrame } from "../spritePosition";
 import { useHitRegion } from "../hitRegions";
@@ -80,6 +81,7 @@ interface ChatPanelProps {
 export function ChatPanel({ geometry }: ChatPanelProps) {
   const phase = useChatStore((s) => s.phase);
   const messages = useChatStore((s) => s.messages);
+  const sessionUsage = useChatStore((s) => s.sessionUsage);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -226,6 +228,24 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
     >
       <header className="panel__header">
         <span className="panel__title">蕾米埃尔</span>
+        {/* Running cost, always visible rather than buried in a menu. */}
+        {sessionUsage.total > 0 && (
+          <span
+            className="panel__tokens"
+            title={`本次会话：输入 ${sessionUsage.prompt} · 输出 ${sessionUsage.completion}`}
+          >
+            {sessionUsage.total.toLocaleString()} tok
+          </span>
+        )}
+        <button
+          type="button"
+          className="iconbtn iconbtn--ghost"
+          onClick={() => void openSettings()}
+          title="设置"
+          aria-label="设置"
+        >
+          <Icon.Gear size={15} />
+        </button>
         <button
           type="button"
           className="iconbtn iconbtn--ghost"

@@ -1,0 +1,273 @@
+/*
+ * Settings window.
+ *
+ * A normal decorated window, not the overlay — so unlike the panel it may paint
+ * a solid background. It reuses the same tokens so the two surfaces read as one
+ * product, and follows the viewer's light/dark preference because a settings
+ * window sits among ordinary apps rather than over a wallpaper.
+ */
+
+:root {
+  --accent: #c2557f;
+  --bg: #fbf9fb;
+  --surface: #ffffff;
+  --border: #e3dde6;
+  --text: #1d1722;
+  --text-muted: #6c6375;
+  --danger: #b3243f;
+  --ok: #1f7a52;
+
+  --r-small: 8px;
+  --r-surface: 12px;
+
+  color-scheme: light dark;
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #f5a8c7;
+    --bg: #141220;
+    --surface: #1c1926;
+    --border: #302a3c;
+    --text: #eef0f7;
+    --text-muted: #99a1b5;
+    --danger: #ff8a9b;
+    --ok: #6fd8a6;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.settings {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 28px 24px 48px;
+}
+
+.settings__title {
+  margin: 0 0 22px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.group {
+  margin-bottom: 26px;
+  padding: 18px 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-surface);
+}
+
+.group__title {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Fields stack with gap rather than per-element margins, so spacing can't
+   collapse or double between siblings. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.field__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.field__value {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.field__hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.control {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  color: var(--text);
+  font: inherit;
+}
+
+.control:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.control:disabled {
+  opacity: 0.55;
+}
+
+.control--range {
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.control--area {
+  resize: vertical;
+  line-height: 1.6;
+  font-family: inherit;
+}
+
+.keyrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Long masked hints and model ids must not push the buttons out of the row. */
+  min-width: 0;
+}
+
+.keyrow > .control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.keyrow__hint {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  color: var(--text);
+  font: inherit;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .btn--primary {
+    color: #23131f;
+  }
+}
+
+.linkbtn {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: default;
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+}
+
+.badge--ok {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--ok);
+}
+
+.note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.note--ok {
+  color: var(--ok);
+}
+
+.note--bad {
+  color: var(--danger);
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.switch input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.switch input:disabled + span {
+  color: var(--text-muted);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.settings__footer {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.note--warn {
+  color: #b8730f;
+}
+
+@media (prefers-color-scheme: dark) {
+  .note--warn {
+    color: #e5a95b;
+  }
+}

@@ -1,5 +1,7 @@
 mod assets;
+mod llm;
 mod platform;
+mod secrets;
 mod window;
 
 use tauri::{AppHandle, Manager, Runtime};
@@ -44,6 +46,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_os::init())
         .manage(PassthroughState::default())
+        .manage(llm::StreamRegistry::default())
         .invoke_handler(tauri::generate_handler![
             window::overlay::overlay_ready,
             window::overlay::refresh_overlay_geometry,
@@ -52,6 +55,16 @@ pub fn run() {
             window::passthrough::set_force_interactive,
             assets::load_pack,
             assets::list_packs,
+            secrets::store_key,
+            secrets::has_key,
+            secrets::delete_key,
+            secrets::key_hint,
+            llm::provider::list_providers,
+            llm::provider::check_key,
+            llm::start_chat,
+            llm::cancel_chat,
+            llm::verify_key,
+            llm::list_models,
             quit_app,
         ])
         .setup(|app| {

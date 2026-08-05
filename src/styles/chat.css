@@ -86,6 +86,15 @@
   text-overflow: ellipsis;
 }
 
+/* Running session cost, in the header where it is always in view. */
+.panel__tokens {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- shared controls ---------- */
 
 /*
@@ -407,6 +416,138 @@
   overflow-wrap: anywhere;
 }
 
+/* ---------- tool activity ---------- */
+
+/*
+ * Sits above the answer so what the model did is read before what it said.
+ * Muted like the reasoning line — this is provenance, not content.
+ */
+.tools {
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 6px;
+}
+
+.tools__toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: default;
+}
+
+.tools__toggle:disabled {
+  cursor: default;
+}
+
+.tools__icon {
+  flex: 0 0 auto;
+}
+
+.tools__label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tools__count {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  background: var(--surface-raised);
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.tools__chevron {
+  flex: 0 0 auto;
+  transition: transform 160ms ease;
+}
+
+.tools__chevron--open {
+  transform: rotate(90deg);
+}
+
+.tools__toggle:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.sources {
+  margin: 7px 0 0;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--fs-sm);
+}
+
+.sources__link {
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: default;
+  overflow-wrap: anywhere;
+}
+
+.sources__link:hover {
+  color: var(--text);
+}
+
+/* ---------- failed turn ---------- */
+
+.turn-error {
+  align-self: stretch;
+  padding: 11px 13px;
+  background: rgba(255, 138, 155, 0.08);
+  border: 1px solid rgba(255, 138, 155, 0.24);
+  border-radius: var(--r-small);
+}
+
+.turn-error__title {
+  margin: 0 0 3px;
+  color: var(--danger);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.turn-error__hint {
+  margin: 0 0 9px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.turn-error__retry {
+  padding: 5px 12px;
+  background: var(--surface-hover);
+  border: 0;
+  border-radius: var(--r-small);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: default;
+}
+
+.turn-error__retry:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 /* ---------- action row ---------- */
 
 .actions {
@@ -450,6 +591,15 @@
 .actions__btn--active {
   opacity: 1;
   color: var(--accent);
+}
+
+/* Per-reply cost, so it is attributable rather than only a session total. */
+.actions__tokens {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
 }
 
 .actions__time {
@@ -542,6 +692,52 @@
 }
 
 .opener:hover {
+  background: var(--surface-hover);
+  border-color: transparent;
+  color: var(--text);
+}
+
+.opener--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #23131f;
+  font-weight: 500;
+}
+
+.opener--primary:hover {
+  background: var(--accent-strong);
+  color: #23131f;
+}
+
+/* ---------- web search toggle ---------- */
+
+/*
+ * State is carried by fill, not just colour: "is search on right now?" has to
+ * be answerable at a glance, and an off state that only differs in hue reads as
+ * ambiguous.
+ */
+.searchtoggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.searchtoggle:hover {
+  color: var(--text);
+}
+
+.searchtoggle--on {
   background: var(--surface-hover);
   border-color: transparent;
   color: var(--text);

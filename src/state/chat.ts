@@ -1,7 +1,16 @@
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { create } from "zustand";
 
-import { startMockStream, type MockStreamHandle } from "@/lib/mockStream";
+import {
+  CHAT_EVENT,
+  ipc,
+  type ApiError,
+  type StreamEvent,
+  type TokenUsage,
+  type ToolActivity,
+} from "@/lib/ipc";
 import { useAgentStore } from "./agent";
+import { currentProvider, useConfigStore } from "./config";
 
 /** Hard cap on a single user message. */
 export const MAX_INPUT_LENGTH = 500;
@@ -11,6 +20,9 @@ export const COUNTER_THRESHOLD = MAX_INPUT_LENGTH - 60;
 
 /** How long the character looks pleased before returning to idle. */
 const PLEASED_DURATION_MS = 1500;
+
+/** Turns sent as context. Older ones are dropped rather than growing forever. */
+const CONTEXT_TURNS = 20;
 
 export type MessageRole = "user" | "assistant";
 
@@ -29,7 +41,15 @@ export interface ChatMessage {
    * `<think>` tags inside the body; either way the user must be able to see it.
    */
   reasoning: string;
-  status: "streaming" | "done" | "cancelled";
+  /**
+   * What the model did besides write — searches run, sources consulted.
+   * Rendered in the transcript so "did it look this up?" is answerable by
+   * looking, not by guessing from the wording.
+   */
+  tools: ToolActivity[];
+  usage: TokenUsage | null;
+  error: ApiError | null;
+  status: "streaming" | "done" | "cancelled" | "error";
   createdAt: number;
 }
 
@@ -47,41 +67,35 @@ interface ChatStore {
   messages: ChatMessage[];
   draft: string;
   streaming: boolean;
+  /** Running total for this conversation, so cost is never a surprise. */
+  sessionUsage: TokenUsage;
 
   openPanel: () => void;
   finishOpen: () => void;
-  /** Begins the close animation; `finishClose` completes it. */
   requestClose: () => void;
   finishClose: () => void;
 
   setDraft: (draft: string) => void;
   send: () => void;
   stop: () => void;
-  /** Discards the last reply and asks again with the same prompt. */
   regenerate: () => void;
   reset: () => void;
 }
 
+const EMPTY_USAGE: TokenUsage = { prompt: 0, completion: 0, total: 0 };
+
 type SetState = (
-  partial:
-    | Partial<ChatStore>
-    | ((state: ChatStore) => Partial<ChatStore>),
+  partial: Partial<ChatStore> | ((state: ChatStore) => Partial<ChatStore>),
 ) => void;
 
-let activeStream: MockStreamHandle | null = null;
 let pleasedTimer: ReturnType<typeof setTimeout> | undefined;
-
-const messageText = (message: ChatMessage) => message.chunks.join("");
+let activeStreamId: string | null = null;
 
 let idCounter = 0;
 const nextId = () => `m${++idCounter}`;
 
-function stopActiveStream(): void {
-  activeStream?.cancel();
-  activeStream = null;
-}
+const messageText = (message: ChatMessage) => message.chunks.join("");
 
-/** Applies `patch` to one message, leaving the rest untouched. */
 function patchMessage(
   messages: ChatMessage[],
   id: string,
@@ -90,78 +104,92 @@ function patchMessage(
   return messages.map((message) => (message.id === id ? patch(message) : message));
 }
 
+function emptyAssistant(id: string): ChatMessage {
+  return {
+    id,
+    role: "assistant",
+    chunks: [],
+    reasoning: "",
+    tools: [],
+    usage: null,
+    error: null,
+    status: "streaming",
+    createdAt: Date.now(),
+  };
+}
+
 /**
- * Appends an empty assistant turn and streams a reply into it.
+ * Starts a reply and streams it in.
  *
- * Shared by `send` and `regenerate` so both drive the character's state machine
- * the same way: thinking while the chain-of-thought arrives, writing once body
- * text starts, pleased briefly on completion.
+ * The request is built here, but the API key is not: Rust reads it from the OS
+ * credential store when it builds the HTTP request. Nothing secret passes
+ * through this function.
  */
-function beginReply(set: SetState, prompt: string): void {
+function beginReply(set: SetState, get: () => ChatStore): void {
+  const config = useConfigStore.getState();
   const assistantId = nextId();
+  const streamId = `s${Date.now()}-${assistantId}`;
+  activeStreamId = streamId;
 
   set((state) => ({
     streaming: true,
-    messages: [
-      ...state.messages,
-      {
-        id: assistantId,
-        role: "assistant" as const,
-        chunks: [],
-        reasoning: "",
-        status: "streaming" as const,
-        createdAt: Date.now(),
-      },
-    ],
+    messages: [...state.messages, emptyAssistant(assistantId)],
   }));
 
   useAgentStore.getState().setState("thinking");
 
-  activeStream = startMockStream(prompt, {
-    onReasoning: (text) => {
-      set((state) => ({
-        messages: patchMessage(state.messages, assistantId, (message) => ({
-          ...message,
-          reasoning: message.reasoning + text,
-        })),
-      }));
-    },
+  // Only the tail of the conversation is sent; an unbounded transcript would
+  // grow the bill on every turn.
+  const history = get()
+    .messages.filter((m) => m.status !== "error" && messageText(m).length > 0)
+    .slice(-CONTEXT_TURNS)
+    .map((m) => ({ role: m.role, content: messageText(m) }));
 
-    onChunk: (text) => {
-      // The first chunk of body text is the moment she stops thinking and
-      // starts writing.
-      if (useAgentStore.getState().state === "thinking") {
-        useAgentStore.getState().setState("writing");
-      }
-      set((state) => ({
-        messages: patchMessage(state.messages, assistantId, (message) => ({
-          ...message,
-          chunks: [...message.chunks, text],
-        })),
-      }));
-    },
+  const info = currentProvider(config);
 
-    onDone: () => {
-      activeStream = null;
-      set((state) => ({
-        streaming: false,
-        messages: patchMessage(state.messages, assistantId, (message) => ({
-          ...message,
-          status: "done" as const,
-        })),
-      }));
+  void ipc
+    .startChat(streamId, {
+      provider: config.provider,
+      baseUrl: config.baseUrl.trim() || null,
+      model: config.model,
+      messages: history,
+      system: config.systemPrompt.trim() || null,
+      temperature: config.temperature,
+      // Never ask for search from a provider that has none: the request would
+      // be rejected outright.
+      webSearch: config.webSearch && (info?.nativeSearch ?? false),
+    })
+    .catch((error: unknown) => {
+      failStream(set, assistantId, error as ApiError);
+    });
 
-      useAgentStore.getState().setState("pleased");
-      clearTimeout(pleasedTimer);
-      pleasedTimer = setTimeout(() => {
-        // Only fall back to the panel's resting animation if nothing else has
-        // taken over in the meantime.
-        if (useAgentStore.getState().state === "pleased") {
-          useAgentStore.getState().setState("penIdle");
-        }
-      }, PLEASED_DURATION_MS);
-    },
-  });
+  streamTargets.set(streamId, assistantId);
+}
+
+/** Maps a stream id to the message it is filling. */
+const streamTargets = new Map<string, string>();
+
+function settleCharacter(): void {
+  useAgentStore.getState().setState("pleased");
+  clearTimeout(pleasedTimer);
+  pleasedTimer = setTimeout(() => {
+    if (useAgentStore.getState().state === "pleased") {
+      useAgentStore.getState().setState("penIdle");
+    }
+  }, PLEASED_DURATION_MS);
+}
+
+function failStream(set: SetState, assistantId: string, error: ApiError): void {
+  set((state) => ({
+    streaming: false,
+    messages: patchMessage(state.messages, assistantId, (message) => ({
+      ...message,
+      status: "error",
+      error,
+    })),
+  }));
+  // The character reacts rather than a raw dialog appearing over the desktop.
+  useAgentStore.getState().setState("confused");
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -169,6 +197,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   draft: "",
   streaming: false,
+  sessionUsage: EMPTY_USAGE,
 
   openPanel: () => {
     if (get().phase !== "closed") return;
@@ -183,15 +212,21 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   requestClose: () => {
     const { phase } = get();
     if (phase !== "open" && phase !== "opening") return;
-    stopActiveStream();
+    get().stop();
     set({ phase: "closing", streaming: false });
   },
 
   finishClose: () => {
     clearTimeout(pleasedTimer);
-    // Sessions are not kept by default, so closing the panel discards the
-    // conversation. The save prompt arrives in M4.
-    set({ phase: "closed", messages: [], draft: "", streaming: false });
+    // Sessions are not kept by default, so closing discards the conversation.
+    // The save prompt arrives in M4.
+    set({
+      phase: "closed",
+      messages: [],
+      draft: "",
+      streaming: false,
+      sessionUsage: EMPTY_USAGE,
+    });
     useAgentStore.getState().setState("idle");
   },
 
@@ -211,18 +246,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           role: "user" as const,
           chunks: [prompt],
           reasoning: "",
+          tools: [],
+          usage: null,
+          error: null,
           status: "done" as const,
           createdAt: Date.now(),
         },
       ],
     }));
 
-    beginReply(set, prompt);
+    beginReply(set, get);
   },
 
   stop: () => {
+    if (activeStreamId) {
+      void ipc.cancelChat(activeStreamId);
+    }
     if (!get().streaming) return;
-    stopActiveStream();
+
     set((state) => ({
       streaming: false,
       messages: state.messages.map((message) =>
@@ -243,21 +284,107 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const { messages, streaming } = get();
     if (streaming) return;
 
-    // Drop trailing assistant turns, then reuse the user prompt beneath them.
     let end = messages.length;
     while (end > 0 && messages[end - 1]?.role === "assistant") end -= 1;
-
-    const prompt = messages[end - 1];
-    if (!prompt || prompt.role !== "user") return;
+    if (!messages[end - 1] || messages[end - 1]?.role !== "user") return;
 
     set({ messages: messages.slice(0, end) });
-    beginReply(set, messageText(prompt));
+    beginReply(set, get);
   },
 
   reset: () => {
-    stopActiveStream();
+    get().stop();
     clearTimeout(pleasedTimer);
-    set({ messages: [], draft: "", streaming: false });
+    set({ messages: [], draft: "", streaming: false, sessionUsage: EMPTY_USAGE });
     useAgentStore.getState().setState("penIdle");
   },
 }));
+
+// ---------------------------------------------------------------------------
+// Stream events
+// ---------------------------------------------------------------------------
+
+let unlisten: UnlistenFn | null = null;
+
+/** Subscribes to provider stream events. Call once at overlay startup. */
+export async function attachChatEvents(): Promise<void> {
+  if (unlisten) return;
+
+  unlisten = await listen<StreamEvent>(CHAT_EVENT, ({ payload }) => {
+    const assistantId = streamTargets.get(payload.streamId);
+    if (!assistantId) return;
+
+    const set = useChatStore.setState;
+
+    switch (payload.type) {
+      case "content": {
+        if (useAgentStore.getState().state === "thinking") {
+          useAgentStore.getState().setState("writing");
+        }
+        set((state) => ({
+          messages: patchMessage(state.messages, assistantId, (message) => ({
+            ...message,
+            chunks: [...message.chunks, payload.text],
+          })),
+        }));
+        break;
+      }
+
+      case "reasoning": {
+        set((state) => ({
+          messages: patchMessage(state.messages, assistantId, (message) => ({
+            ...message,
+            reasoning: message.reasoning + payload.text,
+          })),
+        }));
+        break;
+      }
+
+      case "tool": {
+        set((state) => ({
+          messages: patchMessage(state.messages, assistantId, (message) => ({
+            ...message,
+            tools: [...message.tools, payload.activity],
+          })),
+        }));
+        break;
+      }
+
+      case "usage": {
+        set((state) => ({
+          messages: patchMessage(state.messages, assistantId, (message) => ({
+            ...message,
+            usage: payload.usage,
+          })),
+          sessionUsage: {
+            prompt: state.sessionUsage.prompt + payload.usage.prompt,
+            completion: state.sessionUsage.completion + payload.usage.completion,
+            total: state.sessionUsage.total + payload.usage.total,
+          },
+        }));
+        break;
+      }
+
+      case "done": {
+        streamTargets.delete(payload.streamId);
+        if (activeStreamId === payload.streamId) activeStreamId = null;
+        set((state) => ({
+          streaming: false,
+          messages: patchMessage(state.messages, assistantId, (message) => ({
+            ...message,
+            status: message.status === "streaming" ? "done" : message.status,
+          })),
+        }));
+        settleCharacter();
+        break;
+      }
+
+      case "failed": {
+        streamTargets.delete(payload.streamId);
+        if (activeStreamId === payload.streamId) activeStreamId = null;
+        failStream(set, assistantId, payload.error);
+        break;
+      }
+    }
+  });
+}

@@ -1,5 +1,7 @@
 import { memo, useLayoutEffect, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
+import { describeError, type ApiError, type ToolActivity } from "@/lib/ipc";
 import { parseBlocks } from "@/lib/markdownLite";
 import { reasoningSummary, useChatStore, type ChatMessage } from "@/state/chat";
 import { Icon } from "./icons";
@@ -56,6 +58,85 @@ function ReasoningRow({
   );
 }
 
+/**
+ * What the model did besides write.
+ *
+ * Rendered above the answer so "did it search the web, and what did it read?"
+ * is answerable by looking at the transcript. A model that quietly browsed and
+ * never said so is the thing this prevents.
+ */
+function ToolRow({ tools }: { tools: ToolActivity[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (tools.length === 0) return null;
+
+  const queries = tools.filter((t) => t.kind === "search");
+  const sources = tools.filter((t) => t.kind === "citation");
+
+  const label =
+    queries.length > 0
+      ? `联网搜索：${queries.map((q) => q.query).join("、")}`
+      : "参考了网页";
+
+  return (
+    <div className="tools">
+      <button
+        type="button"
+        className="tools__toggle"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        disabled={sources.length === 0}
+      >
+        <Icon.Globe size={13} className="tools__icon" />
+        <span className="tools__label">{label}</span>
+        {sources.length > 0 && (
+          <>
+            <span className="tools__count">{sources.length}</span>
+            <Icon.ChevronRight
+              size={13}
+              className={`tools__chevron${expanded ? " tools__chevron--open" : ""}`}
+            />
+          </>
+        )}
+      </button>
+
+      {expanded && (
+        <ol className="sources">
+          {sources.map((source, index) => (
+            <li key={`${source.url}-${index}`}>
+              <button
+                type="button"
+                className="sources__link"
+                onClick={() => void openUrl(source.url)}
+                title={source.url}
+              >
+                {source.title}
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+/** A failed turn, with the specific remedy rather than "something went wrong". */
+function ErrorRow({ error }: { error: ApiError }) {
+  const { title, hint } = describeError(error);
+  return (
+    <div className="turn-error">
+      <p className="turn-error__title">{title}</p>
+      {hint && <p className="turn-error__hint">{hint}</p>}
+      <button
+        type="button"
+        className="turn-error__retry"
+        onClick={() => useChatStore.getState().regenerate()}
+      >
+        重试
+      </button>
+    </div>
+  );
+}
+
 function ActionRow({ message }: { message: ChatMessage }) {
   const [copied, setCopied] = useState(false);
   const streaming = useChatStore((s) => s.streaming);
@@ -89,6 +170,14 @@ function ActionRow({ message }: { message: ChatMessage }) {
       <button type="button" className="actions__btn" title="朗读" aria-label="朗读">
         <Icon.Speaker size={15} />
       </button>
+      {message.usage && (
+        <span
+          className="actions__tokens"
+          title={`输入 ${message.usage.prompt} · 输出 ${message.usage.completion}`}
+        >
+          {message.usage.total} tok
+        </span>
+      )}
       <button type="button" className="actions__btn" title="有帮助" aria-label="有帮助">
         <Icon.ThumbUp size={15} />
       </button>
@@ -170,9 +259,12 @@ export const Message = memo(function Message({
 
   return (
     <div className="msg msg--assistant">
+      <ToolRow tools={message.tools} />
       <ReasoningRow reasoning={message.reasoning} thinking={streaming && empty} />
 
-      {streaming ? (
+      {message.error ? (
+        <ErrorRow error={message.error} />
+      ) : streaming ? (
         <div className="prose prose--streaming">
           {message.chunks.map((chunk, index) => (
             // Chunks are append-only, so the index is a stable identity.
@@ -200,7 +292,7 @@ export const Message = memo(function Message({
         </div>
       )}
 
-      {!streaming && !empty && <ActionRow message={message} />}
+      {!streaming && !empty && !message.error && <ActionRow message={message} />}
       {isLatestAssistant && <AgentMark settled={!streaming} />}
     </div>
   );

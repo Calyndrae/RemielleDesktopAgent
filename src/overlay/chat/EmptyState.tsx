@@ -1,4 +1,6 @@
+import { openSettings } from "@/lib/settingsWindow";
 import { useChatStore } from "@/state/chat";
+import { isReady, useConfigStore } from "@/state/config";
 import { Icon } from "./icons";
 
 /**
@@ -17,7 +19,41 @@ import { Icon } from "./icons";
 
 const OPENERS = ["随便聊聊", "帮我看段代码", "解释一个概念"];
 
+/**
+ * Shown until a provider and model are actually usable.
+ *
+ * The composer stays visible but sending would fail, so the first screen says
+ * what is missing and takes you straight there — rather than letting the user
+ * type a message and only then discover there is no key.
+ */
+function SetupPrompt() {
+  const hasKey = useConfigStore((s) => s.configured.includes(s.provider));
+
+  return (
+    <div className="empty">
+      <div className="empty__mark">
+        <Icon.Mark size={30} />
+      </div>
+      <p className="empty__greeting">还差一步。</p>
+      <p className="empty__sub">
+        {hasKey ? "选一个模型，我们就可以开始了。" : "给我一个 API 密钥，我们就可以开始了。"}
+      </p>
+      <div className="empty__openers">
+        <button type="button" className="opener opener--primary" onClick={() => void openSettings()}>
+          打开设置
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function EmptyState() {
+  const ready = useConfigStore(isReady);
+  const hydrated = useConfigStore((s) => s.hydrated);
+
+  // Don't flash the setup prompt while config is still loading.
+  if (hydrated && !ready) return <SetupPrompt />;
+
   return (
     <div className="empty">
       <div className="empty__mark">
