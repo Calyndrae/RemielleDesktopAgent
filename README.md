@@ -1,2 +1,2 @@
-# RemielleDesktopAgent
+# Remielle Desktop Agent
 (description here)
