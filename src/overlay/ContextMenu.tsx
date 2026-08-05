@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { Icon } from "./chat/icons";
 import { useHitRegion } from "./hitRegions";
 
 export interface MenuItem {
@@ -84,7 +85,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
           }}
         >
           <span className="menu__check" aria-hidden="true">
-            {item.checked ? "✓" : ""}
+            {item.checked && <Icon.Check size={14} />}
           </span>
           <span className="menu__label">{item.label}</span>
         </button>

@@ -23,8 +23,21 @@ export interface ChatMessage {
    * lose the seams and re-animate the whole message on every update.
    */
   chunks: string[];
+  /**
+   * Chain-of-thought, kept separate from the answer. Providers deliver this
+   * either as its own field (DeepSeek's `reasoning_content`) or wrapped in
+   * `<think>` tags inside the body; either way the user must be able to see it.
+   */
+  reasoning: string;
   status: "streaming" | "done" | "cancelled";
   createdAt: number;
+}
+
+/** Collapsed label for the reasoning row: its first sentence, truncated. */
+export function reasoningSummary(reasoning: string): string {
+  const firstSentence = reasoning.split(/(?<=[。？！.?!])\s*/)[0] ?? reasoning;
+  const trimmed = firstSentence.trim();
+  return trimmed.length > 42 ? `${trimmed.slice(0, 42)}…` : trimmed;
 }
 
 export type PanelPhase = "closed" | "opening" | "open" | "closing";
@@ -36,16 +49,24 @@ interface ChatStore {
   streaming: boolean;
 
   openPanel: () => void;
+  finishOpen: () => void;
   /** Begins the close animation; `finishClose` completes it. */
   requestClose: () => void;
   finishClose: () => void;
-  finishOpen: () => void;
 
   setDraft: (draft: string) => void;
   send: () => void;
   stop: () => void;
+  /** Discards the last reply and asks again with the same prompt. */
+  regenerate: () => void;
   reset: () => void;
 }
+
+type SetState = (
+  partial:
+    | Partial<ChatStore>
+    | ((state: ChatStore) => Partial<ChatStore>),
+) => void;
 
 let activeStream: MockStreamHandle | null = null;
 let pleasedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -58,6 +79,89 @@ const nextId = () => `m${++idCounter}`;
 function stopActiveStream(): void {
   activeStream?.cancel();
   activeStream = null;
+}
+
+/** Applies `patch` to one message, leaving the rest untouched. */
+function patchMessage(
+  messages: ChatMessage[],
+  id: string,
+  patch: (message: ChatMessage) => ChatMessage,
+): ChatMessage[] {
+  return messages.map((message) => (message.id === id ? patch(message) : message));
+}
+
+/**
+ * Appends an empty assistant turn and streams a reply into it.
+ *
+ * Shared by `send` and `regenerate` so both drive the character's state machine
+ * the same way: thinking while the chain-of-thought arrives, writing once body
+ * text starts, pleased briefly on completion.
+ */
+function beginReply(set: SetState, prompt: string): void {
+  const assistantId = nextId();
+
+  set((state) => ({
+    streaming: true,
+    messages: [
+      ...state.messages,
+      {
+        id: assistantId,
+        role: "assistant" as const,
+        chunks: [],
+        reasoning: "",
+        status: "streaming" as const,
+        createdAt: Date.now(),
+      },
+    ],
+  }));
+
+  useAgentStore.getState().setState("thinking");
+
+  activeStream = startMockStream(prompt, {
+    onReasoning: (text) => {
+      set((state) => ({
+        messages: patchMessage(state.messages, assistantId, (message) => ({
+          ...message,
+          reasoning: message.reasoning + text,
+        })),
+      }));
+    },
+
+    onChunk: (text) => {
+      // The first chunk of body text is the moment she stops thinking and
+      // starts writing.
+      if (useAgentStore.getState().state === "thinking") {
+        useAgentStore.getState().setState("writing");
+      }
+      set((state) => ({
+        messages: patchMessage(state.messages, assistantId, (message) => ({
+          ...message,
+          chunks: [...message.chunks, text],
+        })),
+      }));
+    },
+
+    onDone: () => {
+      activeStream = null;
+      set((state) => ({
+        streaming: false,
+        messages: patchMessage(state.messages, assistantId, (message) => ({
+          ...message,
+          status: "done" as const,
+        })),
+      }));
+
+      useAgentStore.getState().setState("pleased");
+      clearTimeout(pleasedTimer);
+      pleasedTimer = setTimeout(() => {
+        // Only fall back to the panel's resting animation if nothing else has
+        // taken over in the meantime.
+        if (useAgentStore.getState().state === "pleased") {
+          useAgentStore.getState().setState("penIdle");
+        }
+      }, PLEASED_DURATION_MS);
+    },
+  });
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -98,69 +202,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const prompt = draft.trim();
     if (!prompt || streaming) return;
 
-    const assistantId = nextId();
-    const now = Date.now();
-
     set((state) => ({
       draft: "",
-      streaming: true,
       messages: [
         ...state.messages,
         {
           id: nextId(),
-          role: "user",
+          role: "user" as const,
           chunks: [prompt],
-          status: "done",
-          createdAt: now,
-        },
-        {
-          id: assistantId,
-          role: "assistant",
-          chunks: [],
-          status: "streaming",
-          createdAt: now,
+          reasoning: "",
+          status: "done" as const,
+          createdAt: Date.now(),
         },
       ],
     }));
 
-    useAgentStore.getState().setState("thinking");
-
-    activeStream = startMockStream(prompt, {
-      onChunk: (text) => {
-        // The first chunk of body text is the moment she stops thinking and
-        // starts writing.
-        if (useAgentStore.getState().state === "thinking") {
-          useAgentStore.getState().setState("writing");
-        }
-        set((state) => ({
-          messages: state.messages.map((message) =>
-            message.id === assistantId
-              ? { ...message, chunks: [...message.chunks, text] }
-              : message,
-          ),
-        }));
-      },
-      onDone: () => {
-        activeStream = null;
-        set((state) => ({
-          streaming: false,
-          messages: state.messages.map((message) =>
-            message.id === assistantId ? { ...message, status: "done" } : message,
-          ),
-        }));
-
-        const agent = useAgentStore.getState();
-        agent.setState("pleased");
-        clearTimeout(pleasedTimer);
-        pleasedTimer = setTimeout(() => {
-          // Only fall back to the panel's resting animation if nothing else
-          // has taken over in the meantime.
-          if (useAgentStore.getState().state === "pleased") {
-            useAgentStore.getState().setState("penIdle");
-          }
-        }, PLEASED_DURATION_MS);
-      },
-    });
+    beginReply(set, prompt);
   },
 
   stop: () => {
@@ -172,12 +229,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         message.status === "streaming"
           ? {
               ...message,
+              // A reply that produced text is worth keeping; one cut off before
+              // its first token is not.
               status: messageText(message).length > 0 ? "done" : "cancelled",
             }
           : message,
       ),
     }));
     useAgentStore.getState().setState("penIdle");
+  },
+
+  regenerate: () => {
+    const { messages, streaming } = get();
+    if (streaming) return;
+
+    // Drop trailing assistant turns, then reuse the user prompt beneath them.
+    let end = messages.length;
+    while (end > 0 && messages[end - 1]?.role === "assistant") end -= 1;
+
+    const prompt = messages[end - 1];
+    if (!prompt || prompt.role !== "user") return;
+
+    set({ messages: messages.slice(0, end) });
+    beginReply(set, messageText(prompt));
   },
 
   reset: () => {

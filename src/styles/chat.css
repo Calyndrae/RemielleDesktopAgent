@@ -1,11 +1,18 @@
 /*
  * Chat panel.
  *
- * Layout rule running through this file: every flex child that contains text
- * gets `min-width: 0` (or `min-height: 0` in a column), and every text surface
- * gets `overflow-wrap: anywhere`. Flex items default to `min-width: auto`,
- * which refuses to shrink below their content — that single default is what
- * makes a long URL or an unbroken identifier blow a panel apart.
+ * Two rules run through this file.
+ *
+ * Layout: every flex child that contains text gets `min-width: 0` (or
+ * `min-height: 0` in a column), and every text surface gets
+ * `overflow-wrap: anywhere`. Flex items default to `min-width: auto` and refuse
+ * to shrink below their content — that single default is what a long URL or an
+ * unbroken identifier exploits to burst a panel.
+ *
+ * Icon alignment: icons are SVGs centred with `display: grid; place-items:
+ * center` and `display: block` on the SVG itself. Text glyphs ("+", "✕", "✓")
+ * sit on a baseline with per-family side bearings, so they land off-centre in a
+ * round button and shift again whenever the font stack resolves differently.
  */
 
 .panel {
@@ -20,9 +27,14 @@
 
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  /* Outer tier of the radius scale (8 / 15 / 16). The panel must never be
+     rounded less than the bubbles inside it — an inner shape with a larger
+     radius than its container reads as a mistake. */
+  border-radius: 16px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(16px);
+  /* 20px rather than 16: enough to average out high-frequency bright detail in
+     a photo wallpaper, which at 16px still pokes through as blobs. */
+  backdrop-filter: blur(20px) saturate(1.25);
 
   transform-origin: 50% 50%;
   will-change: transform, filter, opacity;
@@ -41,15 +53,17 @@
   }
 }
 
-/* The entrance scales up from the character's direction; the transform itself
-   is written by JS, so only the non-transform properties animate here. */
+/* ---------- header ---------- */
 
 .panel__header {
   display: flex;
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
-  padding: 10px 12px 8px 14px;
+  /* Asymmetric on purpose: the title starts 16px from the left edge, and the
+     close button carries ~5px of its own padding around a 15px glyph, so 10px
+     here puts the glyph's optical edge at the same 16px inset. */
+  padding: 10px 10px 10px 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -58,30 +72,83 @@
   flex: 1 1 auto;
   font-size: 13px;
   font-weight: 600;
+  /* CJK glyphs are taller than the Latin box; without this the title feels
+     cramped in a 42px header. */
+  line-height: 1.3;
   color: var(--pink-bright);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.panel__close {
+/* ---------- shared controls ---------- */
+
+.iconbtn {
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  background: none;
+  background: rgba(255, 255, 255, 0.07);
   border: 0;
-  border-radius: 6px;
-  color: var(--text-dim);
-  font-size: 12px;
+  border-radius: 50%;
+  color: var(--text);
   cursor: default;
+  transition: background 120ms ease, color 120ms ease;
 }
 
-.panel__close:hover {
+.iconbtn svg,
+.sendbtn svg,
+.actions__btn svg,
+.menu__check svg {
+  display: block;
+}
+
+.iconbtn:hover {
+  background: var(--surface-hover);
+}
+
+.iconbtn--ghost {
+  width: 26px;
+  height: 26px;
+  background: none;
+  color: var(--text-dim);
+}
+
+.iconbtn--ghost:hover {
   background: var(--surface-hover);
   color: var(--text);
 }
+
+.sendbtn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--pink);
+  border: 0;
+  border-radius: 50%;
+  color: #23131f;
+  cursor: default;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.sendbtn:hover:not(:disabled) {
+  background: var(--pink-bright);
+}
+
+.sendbtn:disabled {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-dim);
+}
+
+.sendbtn--stop {
+  background: #f4eef3;
+  color: #23131f;
+}
+
+/* ---------- scroll area ---------- */
 
 .panel__scroll {
   flex: 1 1 auto;
@@ -91,10 +158,16 @@
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  padding: 14px;
+  padding: 16px 16px 6px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  /*
+   * Deliberately no `gap`. A single gap value applies equally to every pair of
+   * siblings, and the rhythm here is asymmetric: the break between exchanges
+   * has to be larger than the one between a question and its answer. Adjacent
+   * sibling margins below express that; gap cannot.
+   */
+  gap: 0;
 }
 
 .panel__scroll::-webkit-scrollbar {
@@ -102,15 +175,42 @@
 }
 
 .panel__scroll::-webkit-scrollbar-thumb {
-  background: rgba(240, 166, 200, 0.22);
+  background: rgba(240, 166, 200, 0.2);
   border-radius: 4px;
+}
+
+.panel__scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(240, 166, 200, 0.32);
 }
 
 /* ---------- messages ---------- */
 
+/*
+ * Turn spacing scale: 6 / 10 / 14 / 18 / 24.
+ * The largest break marks a new exchange; the smallest separates the parts of
+ * a single assistant turn.
+ */
 .msg {
   display: flex;
   min-width: 0;
+}
+
+.msg + .msg {
+  margin-top: 18px;
+}
+
+/* A question and the answer directly under it belong together. */
+.msg--user + .msg--assistant {
+  margin-top: 14px;
+}
+
+/* A new question starts a new exchange — the biggest break in the transcript. */
+.msg--assistant + .msg--user {
+  margin-top: 24px;
+}
+
+.msg:first-child {
+  margin-top: 0;
 }
 
 .msg--user {
@@ -118,16 +218,20 @@
 }
 
 .msg--assistant {
-  justify-content: flex-start;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .msg__bubble {
   max-width: 78%;
   min-width: 0;
-  padding: 8px 13px;
-  background: rgba(255, 255, 255, 0.07);
-  border-radius: 16px;
-  line-height: 1.5;
+  /* Roomier than it looks like it needs: at 15px radius a tighter bubble leaves
+     almost no flat edge on a single line, and reads as an over-rounded pill. */
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 15px;
+  font-size: 14.5px;
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -135,8 +239,17 @@
 .prose {
   min-width: 0;
   max-width: 100%;
-  line-height: 1.62;
+  font-size: 14.5px;
+  /* Looser than the user bubble (1.6) on purpose: bubbles are a line or two,
+     this is long-form reading, and the text is mixed CJK/Latin which wants more
+     leading than a Latin-tuned ratio gives. */
+  line-height: 1.7;
   overflow-wrap: anywhere;
+}
+
+/* Reasoning line to body. */
+.reasoning + .prose {
+  margin-top: 6px;
 }
 
 .prose--streaming {
@@ -202,22 +315,184 @@
   overflow-x: auto;
   font-family: "Cascadia Mono", "Consolas", monospace;
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .code code {
   white-space: pre;
 }
 
+/* ---------- reasoning ---------- */
+
+.reasoning {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.reasoning__toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.reasoning__label {
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+  /* No italics: they degrade CJK legibility badly, and the summary is already
+     distinguished by size and colour. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reasoning__label--pulsing {
+  animation: reasoning-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes reasoning-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.reasoning__chevron {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  transition: transform 160ms ease;
+}
+
+.reasoning__chevron--open {
+  transform: rotate(90deg);
+}
+
+.reasoning__toggle:hover .reasoning__label,
+.reasoning__toggle:hover .reasoning__chevron {
+  color: var(--text);
+}
+
+.reasoning__body {
+  margin-top: 7px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.26);
+  border-left: 2px solid rgba(240, 166, 200, 0.3);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.68;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- action row ---------- */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px; /* tight cluster */
+  /* Body to action row. */
+  margin-top: 10px;
+  /* Pull the row's own button padding back so its icons align optically with
+     the text column's left edge. */
+  margin-left: -5px;
+}
+
+.actions__btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  /* No chrome at rest — unlike the composer's controls, this row is secondary
+     and should recede until reached for. */
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-dim);
+  opacity: 0.6;
+  cursor: default;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.actions__btn:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.actions__btn:disabled {
+  opacity: 0.28;
+}
+
+.actions__btn--active {
+  opacity: 1;
+  color: var(--pink);
+}
+
+.actions__time {
+  /* Separates the metadata from the interactive cluster. */
+  margin-left: 10px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.4;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- agent mark ---------- */
+
+.mark {
+  /* Action row to mark — the widest internal gap, so the mark reads as
+     belonging to the turn without crowding its controls. */
+  margin-top: 18px;
+  /*
+   * Deliberately below the emphasis of both --text and --pink-bright: the mark
+   * is present but decorative, and at full strength it would compete with the
+   * panel title for "brightest thing on screen".
+   */
+  color: var(--pink);
+  opacity: 0.65;
+  /* Displaced by a FLIP transition when the action row appears above it. */
+  will-change: transform;
+}
+
+/* No action row (streaming, or a stopped reply) — close the gap up. */
+.prose + .mark {
+  margin-top: 12px;
+}
+
 /* ---------- composer ---------- */
 
-.composer {
+.composer-wrap {
   flex: 0 0 auto;
-  margin: 0 12px 12px;
-  padding: 9px 10px 8px;
-  background: rgba(255, 255, 255, 0.04);
+  /* 16px matches `.panel__scroll`'s padding, so the composer and the message
+     column share one left/right edge. */
+  padding: 6px 16px 12px;
+}
+
+.composer {
+  /* Extra top padding is where the placeholder's airiness comes from; growing
+     the font instead would eat line width, and CJK glyphs are already wide at
+     a 422px panel. */
+  padding: 12px 12px 10px;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 15px;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.composer:focus-within {
+  border-color: rgba(240, 166, 200, 0.38);
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .composer__input {
@@ -225,13 +500,14 @@
   width: 100%;
   min-height: 22px;
   max-height: 132px;
-  padding: 0 2px 6px;
+  padding: 0 3px 9px;
   background: none;
   border: 0;
   resize: none;
   color: var(--text);
   font: inherit;
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.6;
   overflow-y: auto;
   user-select: text;
   -webkit-user-select: text;
@@ -248,64 +524,7 @@
 .composer__row {
   display: flex;
   align-items: center;
-  gap: 7px;
-}
-
-/* Controls keep their size no matter how cramped the row gets. */
-.composer__icon,
-.composer__send {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  cursor: default;
-}
-
-.composer__icon {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text);
-  font-size: 16px;
-  line-height: 1;
-}
-
-.composer__icon:hover {
-  background: var(--surface-hover);
-}
-
-.composer__model {
-  flex: 0 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  height: 28px;
-  padding: 0 11px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 0;
-  border-radius: 14px;
-  color: var(--text);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: default;
-  overflow: hidden;
-}
-
-.composer__model:hover {
-  background: var(--surface-hover);
-}
-
-.composer__model-name,
-.composer__model-variant {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.composer__model-variant {
-  color: var(--text-dim);
+  gap: 6px;
 }
 
 .composer__spacer {
@@ -315,6 +534,7 @@
 
 .composer__counter {
   flex: 0 0 auto;
+  margin-right: 2px;
   color: var(--text-dim);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
@@ -324,36 +544,66 @@
   color: var(--danger);
 }
 
-.composer__send {
-  background: var(--pink);
-  color: #241428;
+.modelpill {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 8px 0 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 0;
+  border-radius: 15px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: default;
+  overflow: hidden;
+  transition: background 120ms ease;
 }
 
-.composer__send:hover:not(:disabled) {
-  background: var(--pink-bright);
+.modelpill:hover {
+  background: var(--surface-hover);
 }
 
-.composer__send:disabled {
-  background: rgba(255, 255, 255, 0.1);
+.modelpill__name,
+.modelpill__variant {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Weight as well as colour separates the model from its variant — colour alone
+   is too weak a distinction at 12.5px. */
+.modelpill__name {
+  font-weight: 600;
+}
+
+.modelpill__variant {
   color: var(--text-dim);
 }
 
-.composer__send--stop {
-  background: #ffffff;
-  color: #241428;
+.modelpill__caret {
+  flex: 0 0 auto;
+  color: var(--text-dim);
 }
 
-.composer__stop-glyph {
-  width: 9px;
-  height: 9px;
-  background: currentColor;
-  border-radius: 2px;
+.disclaimer {
+  margin: 8px 0 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.75;
+  text-wrap: balance;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .chunk,
   .caret,
-  .panel--opening {
+  .panel--opening,
+  .reasoning__label--pulsing {
     animation: none;
   }
 }

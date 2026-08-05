@@ -6,6 +6,7 @@ import { useChatStore } from "@/state/chat";
 import { getSpriteFrame } from "../spritePosition";
 import { useHitRegion } from "../hitRegions";
 import { Composer } from "./Composer";
+import { Icon } from "./icons";
 import { Message } from "./Message";
 
 /** Close flight duration. */
@@ -192,6 +193,11 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
     return () => cancelAnimationFrame(frame);
   }, [phase, rect]);
 
+  const lastAssistantIndex = messages.reduce(
+    (latest, message, index) => (message.role === "assistant" ? index : latest),
+    -1,
+  );
+
   // Keep the newest content in view as it streams in.
   useEffect(() => {
     const element = scrollRef.current;
@@ -221,18 +227,25 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
         <span className="panel__title">蕾米埃尔</span>
         <button
           type="button"
-          className="panel__close"
+          className="iconbtn iconbtn--ghost"
           onClick={() => useChatStore.getState().requestClose()}
           title="关闭"
           aria-label="关闭"
         >
-          ✕
+          <Icon.Close size={15} />
         </button>
       </header>
 
       <div className="panel__scroll" ref={scrollRef}>
-        {messages.map((message) => (
-          <Message key={message.id} message={message} />
+        {messages.map((message, index) => (
+          <Message
+            key={message.id}
+            message={message}
+            // Exactly one mark in the transcript, on the newest reply.
+            isLatestAssistant={
+              message.role === "assistant" && index === lastAssistantIndex
+            }
+          />
         ))}
       </div>
 

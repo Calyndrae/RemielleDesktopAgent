@@ -20,7 +20,15 @@
   --danger: #ff8a9b;
 
   --radius: 10px;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  /*
+   * Three layers, because the overlay sits on an unpredictable wallpaper:
+   * a contact ring that darkens whatever is directly behind the edge (the pink
+   * border alone nearly vanishes against a bright background), the drop shadow
+   * proper, and a faint top highlight reading as a glass edge.
+   */
+  --shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
   font-size: 14px;
@@ -104,11 +112,14 @@
   color: var(--danger);
 }
 
+/* Sized as a box for an SVG rather than a text glyph, so the tick sits exactly
+   on the label's optical centre in every font fallback. */
 .menu__check {
-  flex: 0 0 12px;
+  flex: 0 0 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
   color: var(--pink);
-  font-size: 12px;
-  line-height: 1;
 }
 
 .menu__label {

@@ -11,6 +11,11 @@ export interface MockStreamHandle {
 }
 
 interface MockStreamCallbacks {
+  /**
+   * Chain-of-thought, before any body text. Mirrors DeepSeek's
+   * `reasoning_content` field and the `<think>` tag convention.
+   */
+  onReasoning: (text: string) => void;
   onChunk: (text: string) => void;
   onDone: () => void;
 }
@@ -78,24 +83,36 @@ function pickReply(prompt: string): string {
  * Streams a canned reply. `onChunk` fires per chunk; `onDone` fires once, and
  * is skipped entirely if the stream is cancelled.
  */
+function reasoningFor(prompt: string): string {
+  const subject = prompt.length > 24 ? `${prompt.slice(0, 24)}…` : prompt;
+  return `用户说的是「${subject}」。先判断这是闲聊还是真的有问题要解决——语气偏随意，那就别端着。回应要短，留一点余地，不要一次把话说满。`;
+}
+
 export function startMockStream(
   prompt: string,
-  { onChunk, onDone }: MockStreamCallbacks,
+  { onReasoning, onChunk, onDone }: MockStreamCallbacks,
 ): MockStreamHandle {
+  const reasoning = chunkify(reasoningFor(prompt));
   const chunks = chunkify(pickReply(prompt));
   let index = 0;
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  const total = reasoning.length + chunks.length;
+
   const pump = () => {
     if (cancelled) return;
 
-    if (index >= chunks.length) {
+    if (index >= total) {
       onDone();
       return;
     }
 
-    onChunk(chunks[index]!);
+    if (index < reasoning.length) {
+      onReasoning(reasoning[index]!);
+    } else {
+      onChunk(chunks[index - reasoning.length]!);
+    }
     index += 1;
 
     // Irregular cadence, with an occasional longer pause to mimic a model

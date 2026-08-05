@@ -84,7 +84,11 @@ try {
     consoleErrors.push(`request failed: ${request.url()}`),
   );
 
-  await page.goto("http://localhost:5199/harness.html", { waitUntil: "networkidle" });
+  // The stress scene is the one carrying content chosen to break the layout;
+  // the default scene is an ordinary conversation and would pass trivially.
+  await page.goto("http://localhost:5199/harness.html?scene=stress", {
+    waitUntil: "networkidle",
+  });
   await page.waitForSelector(".panel", { timeout: 10_000 });
   // Let the entrance animation and chunk fades settle.
   await page.waitForTimeout(600);
