@@ -1,0 +1,175 @@
+/*
+ * Overlay styling.
+ *
+ * Ground rule: nothing here may paint a background across the window. The
+ * overlay spans the whole work area, so any stray fill becomes an opaque
+ * rectangle sitting on the user's desktop.
+ *
+ * Palette follows Remielle — pink and violet over near-black.
+ */
+
+:root {
+  --pink: #f0a6c8;
+  --pink-bright: #ffd0e4;
+  --violet: #2a1b3d;
+  --surface: rgba(22, 16, 30, 0.92);
+  --surface-hover: rgba(240, 166, 200, 0.14);
+  --border: rgba(240, 166, 200, 0.18);
+  --text: #f3ecf4;
+  --text-dim: #a99db1;
+  --danger: #ff8a9b;
+
+  --radius: 10px;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* ---------- sprite ---------- */
+
+.sprite {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Positioned entirely through `transform` from the animation loop, so it
+     never triggers layout. */
+  will-change: transform;
+  touch-action: none;
+  cursor: grab;
+}
+
+.sprite:active {
+  cursor: grabbing;
+}
+
+.sprite__image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  /* Smooth scaling on purpose. The source GIFs have 1-bit alpha, so their edges
+     are already hard; interpolating softens them slightly, whereas
+     nearest-neighbour would preserve every jagged step. */
+  image-rendering: auto;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* ---------- context menu ---------- */
+
+.menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 168px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.menu__item:hover,
+.menu__item:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+.menu__item--danger {
+  color: var(--danger);
+}
+
+.menu__check {
+  flex: 0 0 12px;
+  color: var(--pink);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.menu__label {
+  /* Without this a long label in a flex row refuses to shrink and blows the
+     menu out past its container. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- fault panel ---------- */
+
+.fault {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  max-width: min(420px, calc(100vw - 48px));
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.fault__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pink-bright);
+}
+
+.fault__body {
+  margin: 0 0 10px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fault__detail {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  max-height: 140px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  /* Long paths must scroll inside the box rather than widen it. */
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fault__retry {
+  padding: 6px 14px;
+  background: var(--pink);
+  border: 0;
+  border-radius: 6px;
+  color: #241428;
+  font: inherit;
+  font-weight: 600;
+  cursor: default;
+}
+
+.fault__retry:hover {
+  background: var(--pink-bright);
+}
