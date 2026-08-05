@@ -48,9 +48,20 @@ export function Composer() {
           onKeyDown={handleKeyDown}
         />
 
+        {/*
+          Reading order matches importance: attach, then the model as quiet
+          metadata, then the counter, then voice, then send. The send button is
+          the only filled control in the row.
+        */}
         <div className="composer__row">
           <button type="button" className="iconbtn" title="更多" aria-label="更多">
             <Icon.Plus size={17} />
+          </button>
+
+          <button type="button" className="modelpill" title="切换模型">
+            <span className="modelpill__name">DeepSeek</span>
+            <span className="modelpill__variant">Reasoner</span>
+            <Icon.ChevronDown size={12} className="modelpill__caret" />
           </button>
 
           <div className="composer__spacer" />
@@ -64,12 +75,6 @@ export function Composer() {
               {remaining}
             </span>
           )}
-
-          <button type="button" className="modelpill" title="切换模型">
-            <span className="modelpill__name">DeepSeek</span>
-            <span className="modelpill__variant">Reasoner</span>
-            <Icon.ChevronDown size={13} className="modelpill__caret" />
-          </button>
 
           <button type="button" className="iconbtn" title="语音输入" aria-label="语音输入">
             <Icon.Mic size={17} />

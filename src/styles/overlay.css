@@ -1,38 +1,80 @@
 /*
- * Overlay styling.
+ * Overlay styling and the design tokens for the whole app.
  *
  * Ground rule: nothing here may paint a background across the window. The
  * overlay spans the whole work area, so any stray fill becomes an opaque
  * rectangle sitting on the user's desktop.
- *
- * Palette follows Remielle — pink and violet over near-black.
  */
 
 :root {
-  --pink: #f0a6c8;
-  --pink-bright: #ffd0e4;
-  --violet: #2a1b3d;
-  --surface: rgba(22, 16, 30, 0.92);
-  --surface-hover: rgba(240, 166, 200, 0.14);
-  --border: rgba(240, 166, 200, 0.18);
-  --text: #f3ecf4;
-  --text-dim: #a99db1;
+  /*
+   * ---- Colour ----
+   *
+   * The accent is the only warm hue in the interface, and it is spent in
+   * exactly two places: the send button (the one primary action) and the agent
+   * mark (her identity). Everything else is neutral. An accent used on the
+   * title, the caret, the scrollbar and every check mark is not an accent —
+   * it is just the theme colour, and nothing stands out.
+   *
+   * The neutrals are deliberately *cool*. Pink over a violet ground is
+   * analogous — the two hues sit beside each other and the accent blends in.
+   * Cooling the ground and the text puts real temperature distance between
+   * them, so the accent reads as warm light against cold shadow. That also
+   * happens to be the right image for a character whose title is
+   * "Temporal Lumiflux".
+   */
+  --accent: #f5a8c7;
+  --accent-strong: #ffc6de;
+
+  --surface: rgba(17, 16, 30, 0.93);
+  --surface-raised: rgba(255, 255, 255, 0.055);
+  --surface-hover: rgba(255, 255, 255, 0.09);
+  --border: rgba(255, 255, 255, 0.11);
+
+  --text: #eef0f7;
+  --text-muted: #99a1b5;
+  --text-faint: #6e7588;
   --danger: #ff8a9b;
 
-  --radius: 10px;
+  /*
+   * ---- Type scale ----
+   * Four sizes, no ad-hoc values. Body sits at 14.5px because the panel is
+   * only 422px wide and CJK glyphs are square — larger eats line width fast.
+   */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-base: 14.5px;
+
+  /*
+   * ---- Radius scale ----
+   * Three tiers plus circles. A container is never rounded less than what sits
+   * inside it, or the inner shape reads as a mistake.
+   */
+  --r-container: 16px;
+  --r-surface: 14px;
+  --r-small: 8px;
 
   /*
    * Three layers, because the overlay sits on an unpredictable wallpaper:
-   * a contact ring that darkens whatever is directly behind the edge (the pink
-   * border alone nearly vanishes against a bright background), the drop shadow
-   * proper, and a faint top highlight reading as a glass edge.
+   * a contact ring that darkens whatever is directly behind the edge (a
+   * low-alpha border alone nearly vanishes against a bright background), the
+   * drop shadow proper, and a faint top highlight reading as a glass edge.
    */
   --shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
+  --focus-ring: 0 0 0 2px rgba(245, 168, 199, 0.6);
+
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: var(--fs-base);
   color: var(--text);
+}
+
+/* Keyboard focus must be visible on every interactive element. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* ---------- sprite ---------- */
@@ -79,7 +121,7 @@
   padding: 5px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--r-surface);
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
   display: flex;
@@ -119,7 +161,7 @@
   height: 14px;
   display: grid;
   place-items: center;
-  color: var(--pink);
+  color: var(--text);
 }
 
 .menu__label {
@@ -140,7 +182,7 @@
   padding: 16px 18px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--r-surface);
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
 }
@@ -149,12 +191,12 @@
   margin: 0 0 6px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--pink-bright);
+  color: var(--text);
 }
 
 .fault__body {
   margin: 0 0 10px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -165,7 +207,7 @@
   max-height: 140px;
   background: rgba(0, 0, 0, 0.35);
   border-radius: 6px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-family: "Cascadia Mono", "Consolas", monospace;
   font-size: 12px;
   line-height: 1.45;
@@ -177,7 +219,7 @@
 
 .fault__retry {
   padding: 6px 14px;
-  background: var(--pink);
+  background: var(--accent);
   border: 0;
   border-radius: 6px;
   color: #241428;
@@ -187,5 +229,5 @@
 }
 
 .fault__retry:hover {
-  background: var(--pink-bright);
+  background: var(--accent-strong);
 }

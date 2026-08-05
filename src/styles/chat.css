@@ -30,7 +30,7 @@
   /* Outer tier of the radius scale (8 / 15 / 16). The panel must never be
      rounded less than the bubbles inside it — an inner shape with a larger
      radius than its container reads as a mistake. */
-  border-radius: 16px;
+  border-radius: var(--r-container);
   box-shadow: var(--shadow);
   /* 20px rather than 16: enough to average out high-frequency bright detail in
      a photo wallpaper, which at 16px still pokes through as blobs. */
@@ -70,12 +70,17 @@
 .panel__title {
   min-width: 0;
   flex: 1 1 auto;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: 500;
   /* CJK glyphs are taller than the Latin box; without this the title feels
      cramped in a 42px header. */
   line-height: 1.3;
-  color: var(--pink-bright);
+  /*
+   * Quiet on purpose. The title was the brightest, most saturated thing in the
+   * panel while being the least useful — the character is standing right next
+   * to it; you already know who you are talking to.
+   */
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -83,16 +88,20 @@
 
 /* ---------- shared controls ---------- */
 
+/*
+ * Secondary controls. No fill at rest — only the send button carries a filled
+ * background, so it is unambiguously the primary action in the row.
+ */
 .iconbtn {
   flex: 0 0 auto;
   width: 30px;
   height: 30px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.07);
+  background: none;
   border: 0;
   border-radius: 50%;
-  color: var(--text);
+  color: var(--text-muted);
   cursor: default;
   transition: background 120ms ease, color 120ms ease;
 }
@@ -106,13 +115,14 @@
 
 .iconbtn:hover {
   background: var(--surface-hover);
+  color: var(--text);
 }
 
 .iconbtn--ghost {
   width: 26px;
   height: 26px;
   background: none;
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 
 .iconbtn--ghost:hover {
@@ -126,7 +136,7 @@
   height: 30px;
   display: grid;
   place-items: center;
-  background: var(--pink);
+  background: var(--accent);
   border: 0;
   border-radius: 50%;
   color: #23131f;
@@ -135,12 +145,12 @@
 }
 
 .sendbtn:hover:not(:disabled) {
-  background: var(--pink-bright);
+  background: var(--accent-strong);
 }
 
 .sendbtn:disabled {
   background: rgba(255, 255, 255, 0.09);
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 
 .sendbtn--stop {
@@ -158,7 +168,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  padding: 16px 16px 6px;
+  /* Symmetric with the top: scrolled content used to butt straight against the
+     composer with 6px of clearance, which read as clipped rather than scrolled. */
+  padding: 16px 16px 16px;
   display: flex;
   flex-direction: column;
   /*
@@ -175,12 +187,12 @@
 }
 
 .panel__scroll::-webkit-scrollbar-thumb {
-  background: rgba(240, 166, 200, 0.2);
+  background: rgba(255, 255, 255, 0.16);
   border-radius: 4px;
 }
 
 .panel__scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(240, 166, 200, 0.32);
+  background: rgba(255, 255, 255, 0.26);
 }
 
 /* ---------- messages ---------- */
@@ -229,8 +241,8 @@
      almost no flat edge on a single line, and reads as an over-rounded pill. */
   padding: 10px 14px;
   background: rgba(255, 255, 255, 0.08);
-  border-radius: 15px;
-  font-size: 14.5px;
+  border-radius: var(--r-surface);
+  font-size: var(--fs-base);
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -239,7 +251,7 @@
 .prose {
   min-width: 0;
   max-width: 100%;
-  font-size: 14.5px;
+  font-size: var(--fs-base);
   /* Looser than the user bubble (1.6) on purpose: bubbles are a line or two,
      this is long-form reading, and the text is mixed CJK/Latin which wants more
      leading than a Latin-tuned ratio gives. */
@@ -257,8 +269,8 @@
 }
 
 .prose--muted {
-  color: var(--text-dim);
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
 }
 
 .para {
@@ -295,7 +307,9 @@
   height: 1em;
   margin-left: 1px;
   vertical-align: text-bottom;
-  background: var(--pink);
+  /* Neutral, not the accent: this is a text cursor, and spending the accent
+     here would put a second warm point of interest next to the mark. */
+  background: var(--text-muted);
   animation: caret-blink 1s steps(2, start) infinite;
 }
 
@@ -309,12 +323,12 @@
   margin: 10px 0;
   padding: 10px 12px;
   background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(240, 166, 200, 0.12);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
   /* Long lines scroll inside the block instead of widening the panel. */
   overflow-x: auto;
   font-family: "Cascadia Mono", "Consolas", monospace;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
 }
 
@@ -345,8 +359,8 @@
 
 .reasoning__label {
   min-width: 0;
-  color: var(--text-dim);
-  font-size: 12.5px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
   line-height: 1.5;
   /* No italics: they degrade CJK legibility badly, and the summary is already
      distinguished by size and colour. */
@@ -367,7 +381,7 @@
 
 .reasoning__chevron {
   flex: 0 0 auto;
-  color: var(--text-dim);
+  color: var(--text-muted);
   transition: transform 160ms ease;
 }
 
@@ -384,10 +398,10 @@
   margin-top: 7px;
   padding: 10px 12px;
   background: rgba(0, 0, 0, 0.26);
-  border-left: 2px solid rgba(240, 166, 200, 0.3);
+  border-left: 2px solid rgba(255, 255, 255, 0.22);
   border-radius: 0 8px 8px 0;
-  color: var(--text-dim);
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
   line-height: 1.68;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -417,7 +431,7 @@
   background: none;
   border: 0;
   border-radius: 50%;
-  color: var(--text-dim);
+  color: var(--text-muted);
   opacity: 0.6;
   cursor: default;
   transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
@@ -435,14 +449,14 @@
 
 .actions__btn--active {
   opacity: 1;
-  color: var(--pink);
+  color: var(--accent);
 }
 
 .actions__time {
   /* Separates the metadata from the interactive cluster. */
   margin-left: 10px;
-  color: var(--text-dim);
-  font-size: 11.5px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
   line-height: 1.4;
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
@@ -459,7 +473,7 @@
    * is present but decorative, and at full strength it would compete with the
    * panel title for "brightest thing on screen".
    */
-  color: var(--pink);
+  color: var(--accent);
   opacity: 0.65;
   /* Displaced by a FLIP transition when the action row appears above it. */
   will-change: transform;
@@ -468,6 +482,69 @@
 /* No action row (streaming, or a stopped reply) — close the gap up. */
 .prose + .mark {
   margin-top: 12px;
+}
+
+/* ---------- empty state ---------- */
+
+.empty {
+  /* Centred in the available space rather than pinned to the top, so an empty
+     panel reads as composed instead of unfinished. */
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px 24px;
+  text-align: center;
+}
+
+.empty__mark {
+  color: var(--accent);
+  opacity: 0.62;
+  margin-bottom: 14px;
+}
+
+.empty__greeting {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.empty__sub {
+  margin: 0 0 20px;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+
+.empty__openers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  max-width: 100%;
+}
+
+/*
+ * Openers fill the composer rather than sending on their own — the user keeps
+ * the decision about what actually gets said.
+ */
+.opener {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.opener:hover {
+  background: var(--surface-hover);
+  border-color: transparent;
+  color: var(--text);
 }
 
 /* ---------- composer ---------- */
@@ -484,15 +561,15 @@
      the font instead would eat line width, and CJK glyphs are already wide at
      a 422px panel. */
   padding: 12px 12px 10px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: 15px;
+  border-radius: var(--r-surface);
   transition: border-color 140ms ease, background 140ms ease;
 }
 
 .composer:focus-within {
-  border-color: rgba(240, 166, 200, 0.38);
-  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(245, 168, 199, 0.45);
+  background: var(--surface-raised);
 }
 
 .composer__input {
@@ -506,7 +583,7 @@
   resize: none;
   color: var(--text);
   font: inherit;
-  font-size: 14.5px;
+  font-size: var(--fs-base);
   line-height: 1.6;
   overflow-y: auto;
   user-select: text;
@@ -518,7 +595,7 @@
 }
 
 .composer__input::placeholder {
-  color: var(--text-dim);
+  color: var(--text-muted);
 }
 
 .composer__row {
@@ -535,8 +612,8 @@
 .composer__counter {
   flex: 0 0 auto;
   margin-right: 2px;
-  color: var(--text-dim);
-  font-size: 11.5px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -544,27 +621,36 @@
   color: var(--danger);
 }
 
+/*
+ * The model selector is metadata, not an action.
+ *
+ * It used to be a filled chip at 600 weight, which put it in the same visual
+ * weight class as the send button and made it louder than the thing the user is
+ * actually doing — typing. Stripped to bare text: present, legible, and clearly
+ * subordinate to both the input above it and the send button beside it.
+ */
 .modelpill {
   flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 8px 0 12px;
-  background: rgba(255, 255, 255, 0.07);
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  background: none;
   border: 0;
-  border-radius: 15px;
-  color: var(--text);
+  border-radius: var(--r-small);
+  color: var(--text-muted);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   cursor: default;
   overflow: hidden;
-  transition: background 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .modelpill:hover {
   background: var(--surface-hover);
+  color: var(--text);
 }
 
 .modelpill__name,
@@ -574,26 +660,21 @@
   text-overflow: ellipsis;
 }
 
-/* Weight as well as colour separates the model from its variant — colour alone
-   is too weak a distinction at 12.5px. */
 .modelpill__name {
-  font-weight: 600;
+  font-weight: 500;
 }
 
-.modelpill__variant {
-  color: var(--text-dim);
-}
-
+.modelpill__variant,
 .modelpill__caret {
+  color: var(--text-faint);
   flex: 0 0 auto;
-  color: var(--text-dim);
 }
 
 .disclaimer {
   margin: 8px 0 0;
   text-align: center;
-  color: var(--text-dim);
-  font-size: 11px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
   line-height: 1.45;
   opacity: 0.75;
   text-wrap: balance;

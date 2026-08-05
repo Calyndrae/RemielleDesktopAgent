@@ -6,6 +6,7 @@ import { useChatStore } from "@/state/chat";
 import { getSpriteFrame } from "../spritePosition";
 import { useHitRegion } from "../hitRegions";
 import { Composer } from "./Composer";
+import { EmptyState } from "./EmptyState";
 import { Icon } from "./icons";
 import { Message } from "./Message";
 
@@ -237,6 +238,7 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
       </header>
 
       <div className="panel__scroll" ref={scrollRef}>
+        {messages.length === 0 && <EmptyState />}
         {messages.map((message, index) => (
           <Message
             key={message.id}
