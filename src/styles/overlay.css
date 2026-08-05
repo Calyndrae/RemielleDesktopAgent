@@ -33,6 +33,9 @@
   position: absolute;
   top: 0;
   left: 0;
+  /* Above the chat panel (z-index 5). The close flight has to disappear
+     *behind* the character, which only works if she outranks it. */
+  z-index: 10;
   /* Positioned entirely through `transform` from the animation loop, so it
      never triggers layout. */
   will-change: transform;
@@ -63,6 +66,7 @@
   position: absolute;
   top: 0;
   left: 0;
+  z-index: 20; /* over both the sprite and the panel */
   min-width: 168px;
   padding: 5px;
   background: var(--surface);
@@ -120,6 +124,7 @@
   position: absolute;
   right: 24px;
   bottom: 24px;
+  z-index: 30;
   max-width: min(420px, calc(100vw - 48px));
   padding: 16px 18px;
   background: var(--surface);

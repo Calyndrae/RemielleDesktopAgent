@@ -7,6 +7,7 @@ import { ipc, type OverlayGeometry, type Rect } from "@/lib/ipc";
 import { resolveAnimation, useAgentStore } from "@/state/agent";
 import { useSpriteStore } from "@/state/sprite";
 import type { PackManifest } from "@/types/pack";
+import { setSpriteFrame } from "./spritePosition";
 
 /** Fraction of the sprite that must stay within the work area. */
 const MIN_VISIBLE = 0.3;
@@ -144,6 +145,15 @@ export function Sprite({ pack, geometry, onActivate, onContextMenu }: SpriteProp
       if (element) {
         element.style.transform = `translate3d(${left}px, ${top}px, 0)`;
       }
+
+      // The chat panel's close flight targets the character, so it needs her
+      // live position rather than the last committed anchor.
+      setSpriteFrame({
+        centreX: spring.current.x.value,
+        centreY: spring.current.y.value,
+        width: w,
+        height: h,
+      });
 
       publishMask(left, top, w, h, now);
     };

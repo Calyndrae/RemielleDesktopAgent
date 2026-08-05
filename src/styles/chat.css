@@ -1,0 +1,359 @@
+/*
+ * Chat panel.
+ *
+ * Layout rule running through this file: every flex child that contains text
+ * gets `min-width: 0` (or `min-height: 0` in a column), and every text surface
+ * gets `overflow-wrap: anywhere`. Flex items default to `min-width: auto`,
+ * which refuses to shrink below their content — that single default is what
+ * makes a long URL or an unbroken identifier blow a panel apart.
+ */
+
+.panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5; /* below the sprite, so the close flight vanishes behind her */
+
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+
+  transform-origin: 50% 50%;
+  will-change: transform, filter, opacity;
+}
+
+.panel--opening {
+  animation-name: panel-in;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+}
+
+/* The entrance scales up from the character's direction; the transform itself
+   is written by JS, so only the non-transform properties animate here. */
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 10px 12px 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel__title {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pink-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel__close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: default;
+}
+
+.panel__close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.panel__scroll {
+  flex: 1 1 auto;
+  /* Without this the scroll area refuses to shrink and pushes the composer off
+     the bottom of the panel. */
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panel__scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel__scroll::-webkit-scrollbar-thumb {
+  background: rgba(240, 166, 200, 0.22);
+  border-radius: 4px;
+}
+
+/* ---------- messages ---------- */
+
+.msg {
+  display: flex;
+  min-width: 0;
+}
+
+.msg--user {
+  justify-content: flex-end;
+}
+
+.msg--assistant {
+  justify-content: flex-start;
+}
+
+.msg__bubble {
+  max-width: 78%;
+  min-width: 0;
+  padding: 8px 13px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prose {
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+}
+
+.prose--streaming {
+  white-space: pre-wrap;
+}
+
+.prose--muted {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.para {
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.para:last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * Streamed chunks fade in from blurred to sharp.
+ *
+ * The keyframe has no `to`: it animates toward the element's own computed
+ * style, and with no fill mode the filter is gone once it finishes rather than
+ * leaving hundreds of permanent compositing layers in a long reply.
+ */
+.chunk {
+  animation: chunk-in 0.08s ease-out;
+}
+
+@keyframes chunk-in {
+  from {
+    filter: blur(6px);
+    opacity: 0.35;
+  }
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--pink);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.code {
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(240, 166, 200, 0.12);
+  border-radius: 8px;
+  /* Long lines scroll inside the block instead of widening the panel. */
+  overflow-x: auto;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.code code {
+  white-space: pre;
+}
+
+/* ---------- composer ---------- */
+
+.composer {
+  flex: 0 0 auto;
+  margin: 0 12px 12px;
+  padding: 9px 10px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.composer__input {
+  display: block;
+  width: 100%;
+  min-height: 22px;
+  max-height: 132px;
+  padding: 0 2px 6px;
+  background: none;
+  border: 0;
+  resize: none;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.composer__input:focus {
+  outline: none;
+}
+
+.composer__input::placeholder {
+  color: var(--text-dim);
+}
+
+.composer__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Controls keep their size no matter how cramped the row gets. */
+.composer__icon,
+.composer__send {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  cursor: default;
+}
+
+.composer__icon {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.composer__icon:hover {
+  background: var(--surface-hover);
+}
+
+.composer__model {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 14px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: default;
+  overflow: hidden;
+}
+
+.composer__model:hover {
+  background: var(--surface-hover);
+}
+
+.composer__model-name,
+.composer__model-variant {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer__model-variant {
+  color: var(--text-dim);
+}
+
+.composer__spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.composer__counter {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.composer__counter--limit {
+  color: var(--danger);
+}
+
+.composer__send {
+  background: var(--pink);
+  color: #241428;
+}
+
+.composer__send:hover:not(:disabled) {
+  background: var(--pink-bright);
+}
+
+.composer__send:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-dim);
+}
+
+.composer__send--stop {
+  background: #ffffff;
+  color: #241428;
+}
+
+.composer__stop-glyph {
+  width: 9px;
+  height: 9px;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chunk,
+  .caret,
+  .panel--opening {
+    animation: none;
+  }
+}

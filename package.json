@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "layout:check": "node scripts/layout-check.mjs",
+    "harness": "vite --open /harness.html",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
@@ -37,6 +39,7 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
     "jsdom": "^28.0.0",
+    "playwright": "^1.62.1",
     "typescript": "^5.9.0",
     "vite": "^8.2.0",
     "vitest": "^4.0.0"

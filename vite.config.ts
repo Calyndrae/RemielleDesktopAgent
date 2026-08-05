@@ -44,6 +44,10 @@ export default defineConfig({
       input: {
         overlay: resolve(rootDir, "index.html"),
         settings: resolve(rootDir, "settings.html"),
+        // Dev-only layout harness; kept out of the shipped bundle.
+        ...(process.env.BUILD_HARNESS === "1"
+          ? { harness: resolve(rootDir, "harness.html") }
+          : {}),
       },
     },
   },

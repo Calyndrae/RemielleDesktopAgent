@@ -3,30 +3,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { ipc, type OverlayGeometry } from "@/lib/ipc";
 import { useAgentStore } from "@/state/agent";
+import { useChatStore } from "@/state/chat";
 import { useSpriteStore } from "@/state/sprite";
 import { getMessages, resolveLocale, type Locale } from "@/i18n";
-import type { AgentState, PackManifest } from "@/types/pack";
+import type { PackManifest } from "@/types/pack";
+import { ChatPanel } from "./chat/ChatPanel";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FaultPanel } from "./FaultPanel";
 import { Sprite } from "./Sprite";
 
 const DEFAULT_PACK_ID = "little-remielle";
-
-/**
- * Cycled by left-clicking the sprite.
- *
- * Until the chat panel exists (M1) this is how the state-to-animation mapping,
- * the registration offsets and the mask rebuild get exercised by hand.
- */
-const DEBUG_STATE_CYCLE: AgentState[] = [
-  "idle",
-  "penIdle",
-  "thinking",
-  "writing",
-  "writingPaused",
-  "expect",
-  "pleased",
-];
 
 export function App() {
   const [geometry, setGeometry] = useState<OverlayGeometry | null>(null);
@@ -78,12 +64,21 @@ export function App() {
   }, []);
 
   const handleActivate = useCallback(() => {
-    // TODO(M1): open the chat panel. For now, step through the animations.
-    const current = useAgentStore.getState().state;
-    const index = DEBUG_STATE_CYCLE.indexOf(current);
-    const next = DEBUG_STATE_CYCLE[(index + 1) % DEBUG_STATE_CYCLE.length];
-    if (next) useAgentStore.getState().setState(next);
+    const chat = useChatStore.getState();
+    if (chat.phase === "closed") chat.openPanel();
+    else chat.requestClose();
   }, []);
+
+  /** Steps through the pack's animations — a stand-in for `/emote change`. */
+  const cycleEmote = useCallback(() => {
+    if (!pack) return;
+    const selectable = pack.animations.filter((animation) => animation.selectable);
+    if (selectable.length === 0) return;
+
+    const { emoteOverride, setEmoteOverride } = useAgentStore.getState();
+    const index = selectable.findIndex((animation) => animation.id === emoteOverride);
+    setEmoteOverride(selectable[(index + 1) % selectable.length]!.id);
+  }, [pack]);
 
   const menuItems: MenuItem[] = [
     {
@@ -100,6 +95,20 @@ export function App() {
         const next = !alwaysOnTop;
         useSpriteStore.getState().setAlwaysOnTop(next);
         void getCurrentWindow().setAlwaysOnTop(next);
+      },
+    },
+    {
+      id: "emote",
+      label: messages.menu.changeEmote,
+      onSelect: cycleEmote,
+    },
+    {
+      id: "new-chat",
+      label: messages.menu.newChat,
+      onSelect: () => {
+        const chat = useChatStore.getState();
+        if (chat.phase === "closed") chat.openPanel();
+        else chat.reset();
       },
     },
     {
@@ -128,6 +137,7 @@ export function App() {
 
   return (
     <>
+      <ChatPanel geometry={geometry} />
       <Sprite
         pack={pack}
         geometry={geometry}
