@@ -202,6 +202,20 @@ done it:
 
 All three are seconds of manual checking for anyone sitting at the machine.
 
+**An agent cannot do them for you, and the reason is structural.** The accessory
+policy from bug 13 is what removes her from the Dock and ⌘-Tab — and it also
+removes her from the application list that screen-automation tooling resolves
+names against. `request_access` finds her by neither display name nor bundle id,
+because as far as the window server is concerned she is not an app you can
+switch to. That is the behaviour we wanted; it just also means no agent can put
+a click into her. Nothing binds a global shortcut either
+(`tauri-plugin-global-shortcut` is initialised and never used), so there is no
+keyboard path in as a fallback.
+
+What an agent *can* do is read the log, which is why the logging exists. The
+practical loop is: a person sends one message, the agent reads
+`~/Library/Logs/com.calyndrae.remielle-desktop-agent/`.
+
 The obstacle was the same each time and is worth recording so the next session
 does not waste an hour on it: the agent tooling used here refuses to synthesise
 a click unless it can attribute the target point to an allowlisted application,
