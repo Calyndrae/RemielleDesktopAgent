@@ -12,6 +12,7 @@ import {
 import { ambientBlock, formatMinute, parseMinute } from "@/lib/ambient";
 import { readAutostart, setAutostart } from "@/lib/autostart";
 import { clearLastSession } from "@/lib/lastSession";
+import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbientStore } from "@/state/ambient";
 import { MAX_SCALE, MIN_SCALE, useSpriteStore } from "@/state/sprite";
 import { attachSettingsSync } from "@/state/sync";
@@ -65,6 +66,23 @@ export function SettingsApp() {
     const sync = attachSettingsSync();
     return () => void sync.then((off) => off());
   }, []);
+
+  /*
+   * The theme control is in this window, so this window has to obey it.
+   *
+   * Same two effects the overlay runs, for the same reason: apply whatever the
+   * setting resolves to, and keep following the system for as long as `auto` is
+   * the choice. Without them the segmented control changed the floating panel
+   * and left the form it sits in untouched.
+   */
+  useEffect(() => {
+    applyTheme(config.panelTheme);
+  }, [config.panelTheme]);
+
+  useEffect(
+    () => watchSystemTheme(() => useConfigStore.getState().panelTheme),
+    [],
+  );
 
   // Asked on open rather than remembered. The login item can be removed from
   // System Settings without this app being involved, so a stored copy would go

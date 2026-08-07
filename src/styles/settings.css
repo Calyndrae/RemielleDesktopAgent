@@ -8,7 +8,16 @@
  */
 
 :root {
-  --accent: #c2557f;
+  /*
+   * The overlay's light accent, to the digit.
+   *
+   * This was #c2557f — a near-miss against the panel's #c2416f that read as the
+   * same pink while measuring differently, which is the worst of both. It also
+   * failed AA where it carries text: 4.09:1 on the page and 4.29:1 on a card,
+   * against the 4.5 that 11-12px labels need. #c2416f is 4.68 and 4.91.
+   */
+  --accent: #c2416f;
+  --accent-wash: rgba(194, 65, 111, 0.1);
   --bg: #fbf9fb;
   --surface: #ffffff;
   --border: #e3dde6;
@@ -20,22 +29,40 @@
   --r-small: 8px;
   --r-surface: 12px;
 
-  color-scheme: light dark;
+  color-scheme: light;
   font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
   font-size: 14px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --accent: #f5a8c7;
-    --bg: #141220;
-    --surface: #1c1926;
-    --border: #302a3c;
-    --text: #eef0f7;
-    --text-muted: #99a1b5;
-    --danger: #ff8a9b;
-    --ok: #6fd8a6;
-  }
+/*
+ * Keyed on the attribute, not on `prefers-color-scheme`.
+ *
+ * This window used to follow the OS directly, which sounds right for a settings
+ * window and is wrong for this one: the light/dark control *is in here*.
+ * Choosing 深色 turned the floating panel dark and left the window you chose it
+ * in white — the one surface that could not honour the setting was the surface
+ * presenting it.
+ *
+ * `applyTheme` resolves `auto` in JS and stamps a concrete light or dark on the
+ * root; see the note at the top of lib/theme.ts for why that is done there
+ * instead of in a media query. Reading the attribute is what lets one choice
+ * govern both windows, and it keeps this palette written once rather than once
+ * per way of asking for it.
+ */
+:root[data-theme="dark"] {
+  --accent: #f5a8c7;
+  --accent-wash: rgba(245, 168, 199, 0.14);
+  --bg: #141220;
+  --surface: #1c1926;
+  --border: #302a3c;
+  --text: #eef0f7;
+  --text-muted: #99a1b5;
+  --danger: #ff8a9b;
+  --ok: #6fd8a6;
+
+  /* The dropdown, the slider and the scrollbar are drawn by the OS, not by us.
+     A light scrollbar down the side of a dark form is the giveaway. */
+  color-scheme: dark;
 }
 
 * {
@@ -129,7 +156,21 @@ body {
   opacity: 0.55;
 }
 
-.control--range {
+/*
+ * Keyed on the input type as well as the modifier, because the modifier was
+ * being forgotten.
+ *
+ * Five range inputs exist and exactly one carried `.control--range`. The other
+ * four — her size, and the three ambient ones — were `.control` alone, so they
+ * fell back to the browser's own accent and rendered blue next to a pink one.
+ * Two identical controls in the same window, painting different colours, with
+ * nothing behavioural to justify it.
+ *
+ * The attribute selector means a slider added later cannot miss this by being
+ * given the wrong class.
+ */
+.control--range,
+.control[type="range"] {
   padding: 0;
   accent-color: var(--accent);
 }
@@ -284,9 +325,20 @@ body {
 .tag {
   margin-left: 8px;
   padding: 1px 7px;
-  background: rgba(245, 168, 199, 0.14);
+  /*
+   * Was the dark theme's pink hardcoded, so in light mode this painted a wash
+   * built from the wrong palette. Now it follows the theme.
+   */
+  background: var(--accent-wash);
   border-radius: 999px;
-  color: var(--accent);
+  /*
+   * Body colour, not the accent. Accent-on-accent-wash measured 3.80:1 in light
+   * — 11px text needs 4.5 — and no amount of adjusting the wash fixes it, since
+   * tinting the background toward the accent is what removes the contrast in
+   * the first place. The tint already carries the signal; the text only has to
+   * be readable, and this way it is, by a wide margin in both themes.
+   */
+  color: var(--text);
   font-size: 11px;
   white-space: nowrap;
 }
