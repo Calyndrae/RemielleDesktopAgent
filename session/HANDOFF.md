@@ -3,9 +3,18 @@
 Everything a fresh assistant needs to pick this up without re-deriving it.
 Written for the Claude Code session that continues this on a Mac.
 
-**Repo:** `Calyndrae/RemielleDesktopAgent`
-**Branch:** `claude/remiel-ai-desktop-agent-btntmu` — all 20 commits are pushed.
-**Last commit at handoff:** `0250e64`
+**Working tree:** `~/GIT/RemielleDesktopAgent` on the Mac. This is a **local
+repository with no remote** — it was reconstructed from `RemielleDesktopAgent.zip`
+rather than cloned, so it shares no history with the GitHub copy below. Anything
+needing a remote (notably the Windows build via Actions) is blocked until one is
+added.
+
+**Recovery point:** commit `57d9aeb`, tag `zip-baseline` — all 220 files exactly
+as the zip shipped them. `session/DELETED.md` records what was removed after it.
+
+**Upstream, for reference:** `Calyndrae/RemielleDesktopAgent`, branch
+`claude/remiel-ai-desktop-agent-btntmu`, last commit `0250e64` at packing time.
+The Mac work is not pushed there.
 
 ---
 
@@ -54,10 +63,12 @@ cargo fmt --check
 
 ### Producing installers
 
-**Neither binary was ever built** — the session that wrote this ran on Linux,
-which has neither toolchain. Tauri bundles against the host's own webview and
-packager, so there is no cross-compile: Windows needs Windows, macOS needs
-macOS. The configuration is complete and verified; the artifacts are not.
+**The macOS binary now exists; the Windows one still does not.** Tauri bundles
+against the host's own webview and packager, so there is no cross-compile:
+Windows needs Windows, macOS needs macOS. The Mac half was built on 2026-08-07
+(§4.1) and lives in `program/macos/`. The Windows half needs either a Windows
+machine or `.github/workflows/build.yml`, which in turn needs a git remote this
+repository does not have.
 
 | Target | Command | Output |
 |---|---|---|
@@ -151,10 +162,37 @@ design has to be safe against *incompetence*, not just malice.
 | Ambient: schedule, quiet hours, daily cap, "not today", doze after 12 min | done |
 | Assets: all 7 animations + registration offsets, sizes read from the files | done |
 | Light + dark panel themes, both opaque, both WCAG AA verified | done |
-| macOS: bundle targets, `LSUIElement`, osascript tools | **untested on a Mac** |
+| macOS: bundle targets, accessory policy, osascript tools | **built and launched on a Mac** — see §4.1 |
 | CI: test suites on push, installer build for Windows + both Macs | **never executed** |
 
 **157 Rust tests, 78 frontend tests, clippy clean, rustfmt clean.**
+All of that now verified on `aarch64-apple-darwin`, not only on Linux.
+
+### 4.1 The macOS build, 2026-08-07
+
+First time this project produced a binary on any platform. `pnpm tauri build`
+on an Apple Silicon Mac, Rust 1.96, Command Line Tools only — no full Xcode
+needed. Output is a `.app` and a `.dmg`, collected in `program/macos/`.
+
+Confirmed by running it:
+
+- **Transparency works.** The wallpaper reads through the space around her; no
+  opaque rectangle. `macOSPrivateApi` is doing its job.
+- **She is an accessory process.** `lsappinfo` reports
+  `ApplicationType="UIElement"`: no Dock icon, no menu bar, absent from ⌘-Tab.
+  This took a code change — see bug 13 below.
+- **Resources bundle correctly.** All seven animations, `pack.json` and the
+  persona directory are present under `Contents/Resources/`.
+
+Still unverified: **click-through**. Whether a click on the empty space around
+her reaches the desktop underneath has not been exercised end-to-end on macOS.
+The hit-test logic has unit tests and the Rust path uses
+`AppHandle::cursor_position` off Windows, but nobody has clicked a desktop icon
+through her yet. Do this before believing the platform is done.
+
+The build is ad-hoc signed (linker signature only). Built locally it launches
+without complaint because it never receives a quarantine attribute; copied to
+another machine it will need `xattr -dr com.apple.quarantine`.
 
 ---
 
@@ -239,6 +277,31 @@ Each of these cost real time. They are all in commit messages too.
     { continue }` guard skipped them entirely. Read the call before the guard.
 12. **Gemini rejects `google_search` alongside `functionDeclarations`.** It is a
     genuine either/or; web search wins when enabled.
+
+The next two were found on the first Mac this ever ran on. Both were invisible
+on Linux — not by coincidence, but because Linux is the one platform where the
+wrong behaviour and the right behaviour look identical.
+
+13. **`LSUIElement` in `Info.plist` does not survive startup.** She launched
+    with a menu bar, a Dock icon and a place in ⌘-Tab, on a bundle whose plist
+    plainly said `LSUIElement => true`. The plist only chooses the policy Cocoa
+    *starts* with; tao then calls `setActivationPolicy(Regular)` while building
+    the `NSApplication`, after the plist has been read, and the later call wins.
+    Fixed by calling `app.set_activation_policy(ActivationPolicy::Accessory)` in
+    `setup()`, which runs after tao. **Keep the plist as well** — it governs the
+    window between process start and that line, so removing it flashes a Dock
+    icon on every launch. Diagnose with
+    `lsappinfo info -only ApplicationType "Remielle Desktop Agent"`; it should
+    say `UIElement`, not `Foreground`.
+14. **A test can pass by being vacuously true on the host that wrote it.**
+    `disabled_tools_are_not_offered_to_the_model` enabled `set_system_theme` and
+    expected it back only under `target_os = "windows"`. Correct when that tool
+    was `Platform::Windows`; stale once it gained a macOS implementation and
+    became `Platform::Desktop`. On Linux both sides of the comparison are `0`, so
+    it passed here and could only ever fail on a Mac. The lesson generalises:
+    **a platform-conditional assertion evaluated on a third platform proves
+    nothing.** Prefer a `Platform::Any` fixture and let the dedicated platform
+    test carry the gating.
 
 ---
 
