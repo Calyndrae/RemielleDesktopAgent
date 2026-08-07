@@ -10,6 +10,7 @@ import {
   type ToolSpec,
 } from "@/lib/ipc";
 import { ambientBlock, formatMinute, parseMinute } from "@/lib/ambient";
+import { readAutostart, setAutostart } from "@/lib/autostart";
 import { clearLastSession } from "@/lib/lastSession";
 import { useAmbientStore } from "@/state/ambient";
 import { MAX_SCALE, MIN_SCALE, useSpriteStore } from "@/state/sprite";
@@ -32,6 +33,16 @@ export function SettingsApp() {
   const provider = currentProvider(config);
   const canSearch = useConfigStore(searchAvailable);
 
+  /*
+   * Login-item state, read from the OS rather than stored.
+   *
+   * `autostartBusy` disables the checkbox for the round trip. Without it a
+   * double-click queues an enable behind a disable, and the box ends up showing
+   * whichever reply happened to land last rather than what the OS settled on.
+   */
+  const [autostart, setAutostartState] = useState(false);
+  const [autostartBusy, setAutostartBusy] = useState(false);
+
   const [keyInput, setKeyInput] = useState("");
   const [keyState, setKeyState] = useState<KeyState>({ status: "idle" });
   const [formatIssue, setFormatIssue] = useState<KeyFormatIssue | null>(null);
@@ -53,6 +64,24 @@ export function SettingsApp() {
     // this window has to follow along rather than showing a stale number.
     const sync = attachSettingsSync();
     return () => void sync.then((off) => off());
+  }, []);
+
+  // Asked on open rather than remembered. The login item can be removed from
+  // System Settings without this app being involved, so a stored copy would go
+  // stale silently and the toggle would report something untrue.
+  useEffect(() => {
+    void readAutostart().then(setAutostartState);
+  }, []);
+
+  const toggleAutostart = useCallback(async (next: boolean) => {
+    setAutostartBusy(true);
+    try {
+      // The achieved state, not the requested one — a write the OS refused must
+      // show as refused rather than as a tick that silently means nothing.
+      setAutostartState(await setAutostart(next));
+    } finally {
+      setAutostartBusy(false);
+    }
   }, []);
 
   // The catalog comes from Rust rather than being duplicated here: a tool the
@@ -449,6 +478,23 @@ export function SettingsApp() {
           <span className="field__hint">
             打游戏时想让她让开，可以在这里关掉，或者直接跟她说一声 ——
             前提是下面「改变自己是否浮在全屏应用之上」开着。
+          </span>
+        </div>
+
+        <div className="field">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={autostart}
+              disabled={autostartBusy}
+              onChange={(event) => void toggleAutostart(event.target.checked)}
+            />
+            <span>开机时自动出现</span>
+          </label>
+          <span className="field__hint">
+            这一项写在系统里，不在她自己的设置里，所以你在系统设置的「登录项」里
+            关掉它，这里也会跟着变。要是勾了之后又自己跳回来，多半是系统没让写 ——
+            换个位置再试试，别把程序放在下载文件夹里。
           </span>
         </div>
       </section>
