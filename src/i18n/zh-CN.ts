@@ -10,7 +10,23 @@ export const zhCN = {
     alwaysOnTop: "置于最上",
     changeEmote: "切换动作",
     settings: "设置",
-    hide: "隐藏",
+    hide: "先躲一下",
+    quit: "退出",
+  },
+  /**
+   * Tray menu.
+   *
+   * Separate from `menu` because these are handed to Rust and drawn by the OS,
+   * not by the app's own menu component: no icons, no tick column, no control
+   * over typography. They also have to read on their own — someone opening the
+   * tray has usually lost sight of her, so "回到屏幕上" says where she is going,
+   * not what the code does.
+   */
+  tray: {
+    show: "出来吧",
+    hide: "先躲一下",
+    recentre: "回到屏幕上",
+    settings: "设置",
     quit: "退出",
   },
   error: {

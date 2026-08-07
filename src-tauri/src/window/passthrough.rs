@@ -31,10 +31,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::platform;
-use crate::window::OVERLAY_LABEL;
+use crate::window::{overlay, tray, OVERLAY_LABEL};
 
 /// How often the cursor is sampled. 60 Hz matches typical display refresh; the
 /// work per tick is one syscall plus a handful of comparisons.
@@ -47,6 +47,13 @@ const POLL_INTERVAL: Duration = Duration::from_millis(16);
 /// reaches the target, so a fast click on an edge can't slip through to the
 /// window below during that gap.
 const HIT_PADDING: f64 = 8.0;
+
+/// Poll ticks between checks that she is still on a display that exists.
+///
+/// 125 ticks at 16 ms is about two seconds — fast enough that unplugging a
+/// monitor recovers before the user reaches for the mouse to look for her,
+/// slow enough that the window-system query is free in aggregate.
+const STRANDING_CHECK_EVERY: u32 = 125;
 
 /// A rectangle in logical (CSS) pixels, relative to the overlay's client area.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -166,6 +173,7 @@ pub fn spawn_poller<R: Runtime>(app: AppHandle<R>) {
         // `None` until the first successful apply, so the initial state always
         // gets pushed even if it matches what the window was created with.
         let mut applied: Option<bool> = None;
+        let mut ticks: u32 = 0;
 
         loop {
             std::thread::sleep(POLL_INTERVAL);
@@ -173,6 +181,33 @@ pub fn spawn_poller<R: Runtime>(app: AppHandle<R>) {
             let Some(window) = app.get_webview_window(OVERLAY_LABEL) else {
                 continue; // Not created yet, or torn down at shutdown.
             };
+
+            /*
+             * Has a display been unplugged out from under her?
+             *
+             * This rides the cursor poller rather than taking a thread of its
+             * own: it needs the same window handle, and a dedicated thread to
+             * run one comparison every couple of seconds would spend its whole
+             * life asleep.
+             *
+             * Checked well below the poll rate on purpose. `available_monitors`
+             * queries the window system, which is real work to answer a
+             * question whose answer only changes when someone physically
+             * unplugs a cable.
+             *
+             * Above the visibility check, not below it: being hidden is exactly
+             * when a display can vanish unnoticed, and the recovery has to have
+             * already happened by the time she is shown again.
+             */
+            ticks = ticks.wrapping_add(1);
+            if ticks % STRANDING_CHECK_EVERY == 0 {
+                if let Ok(Some(geometry)) = overlay::recover_if_stranded(&window) {
+                    // Until the frontend hears about this it is placing her as a
+                    // fraction of a work area that no longer has those
+                    // dimensions.
+                    let _ = app.emit_to(OVERLAY_LABEL, tray::EVENT_MOVED, geometry);
+                }
+            }
 
             // Hidden windows should never steal clicks, and there is nothing to
             // hover while the companion is away.

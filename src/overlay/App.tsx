@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 
 import { ipc, type OverlayGeometry } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
@@ -19,6 +20,10 @@ import { FaultPanel } from "./FaultPanel";
 import { Sprite } from "./Sprite";
 
 const DEFAULT_PACK_ID = "little-remielle";
+
+/** Event names, mirroring the constants in `src-tauri/src/window/tray.rs`. */
+const EVENT_TRAY_SETTINGS = "tray://settings";
+const EVENT_OVERLAY_MOVED = "overlay://moved";
 
 export function App() {
   const [geometry, setGeometry] = useState<OverlayGeometry | null>(null);
@@ -103,6 +108,45 @@ export function App() {
     };
   }, []);
 
+  /*
+   * Rust moved the overlay without us asking.
+   *
+   * Two sources: the periodic stranding check, when the display she was on has
+   * been unplugged, and the tray's "bring her back". Neither raises
+   * `onScaleChanged` — the surviving display keeps its DPI, so as far as that
+   * event is concerned nothing happened — and without this the anchor stays a
+   * fraction of a work area that is no longer the one she is drawn in.
+   */
+  useEffect(() => {
+    const unlisten = listen<OverlayGeometry>(EVENT_OVERLAY_MOVED, (event) => {
+      setGeometry(event.payload);
+      useSpriteStore.getState().setMonitor(event.payload.monitor);
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
+
+  // The tray asks for settings rather than opening the window itself: the
+  // creation parameters live in `openSettings`, and duplicating them in Rust
+  // would be two places to keep in step.
+  useEffect(() => {
+    const unlisten = listen(EVENT_TRAY_SETTINGS, () => void openSettings());
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
+
+  // The tray is built in Rust during setup, before this webview exists, so it
+  // starts on the compiled-in Chinese defaults. This is what makes it match the
+  // rest of the UI for an English user.
+  useEffect(() => {
+    void ipc.setTrayLabels(messages.tray).catch(() => {
+      /* A missing tray is survivable; a failed relabel must not take the
+         overlay down with it. */
+    });
+  }, [messages]);
+
   const handleActivate = useCallback(() => {
     const chat = useChatStore.getState();
     if (chat.phase === "closed") chat.openPanel();
@@ -154,11 +198,19 @@ export function App() {
       },
     },
     {
+      id: "hide",
+      label: messages.menu.hide,
+      // Safe now that the tray exists. It was deliberately absent before:
+      // hiding the only window when nothing could bring it back would have
+      // stranded the user with a process they could only end from a task
+      // manager. The tray's toggle is the way back, and going through Rust is
+      // what keeps that toggle's label honest.
+      onSelect: () => void ipc.hideOverlay(),
+    },
+    {
       id: "quit",
       label: messages.menu.quit,
       danger: true,
-      // No "hide" entry until the tray icon lands in M6 — hiding the only
-      // window with no way to bring it back would strand the user.
       onSelect: () => void ipc.quitApp(),
     },
   ];

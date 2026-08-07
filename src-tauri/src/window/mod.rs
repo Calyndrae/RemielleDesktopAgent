@@ -1,5 +1,6 @@
 pub mod overlay;
 pub mod passthrough;
+pub mod tray;
 
 /// Label of the transparent always-on-top window that hosts the sprite, the
 /// chat panel, toasts and the narration box.

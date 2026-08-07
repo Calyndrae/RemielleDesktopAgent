@@ -47,11 +47,15 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_os::init())
         .manage(PassthroughState::default())
+        .manage(window::tray::TrayState::<tauri::Wry>::default())
         .manage(llm::StreamRegistry::default())
         .manage(llm::ConfirmRegistry::default())
         .invoke_handler(tauri::generate_handler![
             window::overlay::overlay_ready,
             window::overlay::refresh_overlay_geometry,
+            window::overlay::recentre_overlay,
+            window::tray::set_tray_labels,
+            window::tray::hide_overlay,
             window::passthrough::set_hit_regions,
             window::passthrough::set_sprite_mask,
             window::passthrough::set_force_interactive,
@@ -88,6 +92,15 @@ pub fn run() {
             // would put a Dock icon on screen for the length of the launch.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Before anything that can fail. The tray is the only control that
+            // does not require finding her on screen first, so it has to exist
+            // even if the overlay never comes up -- a webview that fails to
+            // load would otherwise leave a process with no way out but the
+            // activity monitor. Doubly so on macOS, where the accessory policy
+            // set just above means there is no Dock icon to fall back on.
+            #[cfg(desktop)]
+            window::tray::install(app.handle())?;
 
             // Passthrough is *not* initialised here. The overlay is created
             // hidden, and on GTK a window that has never been shown has no

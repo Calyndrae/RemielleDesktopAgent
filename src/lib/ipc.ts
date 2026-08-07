@@ -27,12 +27,49 @@ export interface SpriteMask {
   bits: number[];
 }
 
+/** Tray menu strings. Mirrors `TrayLabels` in `src-tauri/src/window/tray.rs`. */
+export interface TrayLabels {
+  show: string;
+  hide: string;
+  recentre: string;
+  settings: string;
+  quit: string;
+}
+
 export const ipc = {
   /** Places the overlay over the work area and reveals it. */
   overlayReady: () => invoke<OverlayGeometry>("overlay_ready"),
 
   /** Re-places the overlay after a display change. */
   refreshOverlayGeometry: () => invoke<OverlayGeometry>("refresh_overlay_geometry"),
+
+  /**
+   * Puts the overlay back onto a real display, unconditionally.
+   *
+   * The manual counterpart to the automatic stranding check in Rust, which is
+   * deliberately conservative and only fires when she overlaps no display at
+   * all. This one does not ask.
+   */
+  recentreOverlay: () => invoke<OverlayGeometry>("recentre_overlay"),
+
+  /**
+   * Replaces the tray menu's strings once the locale is known.
+   *
+   * The tray is built during setup, before this webview exists, so it starts on
+   * the Simplified Chinese defaults compiled into Rust. Sending them again in
+   * the resolved locale is what makes the tray bilingual.
+   */
+  setTrayLabels: (labels: TrayLabels) => invoke<void>("set_tray_labels", { labels }),
+
+  /**
+   * Hides the overlay.
+   *
+   * Goes through Rust rather than calling `window.hide()` directly so the tray's
+   * toggle flips to "come out" in the same step. The tray is the only way back
+   * from here, and a tray still offering to hide an already-hidden companion
+   * reads as broken.
+   */
+  hideOverlay: () => invoke<void>("hide_overlay"),
 
   /** Opaque interaction areas: chat panel, context menu, toasts. */
   setHitRegions: (regions: Rect[]) => invoke<void>("set_hit_regions", { regions }),

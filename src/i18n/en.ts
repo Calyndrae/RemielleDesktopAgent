@@ -7,7 +7,14 @@ export const en: Messages = {
     alwaysOnTop: "Always on top",
     changeEmote: "Change animation",
     settings: "Settings",
-    hide: "Hide",
+    hide: "Hide for now",
+    quit: "Quit",
+  },
+  tray: {
+    show: "Come out",
+    hide: "Hide for now",
+    recentre: "Bring her back on screen",
+    settings: "Settings",
     quit: "Quit",
   },
   error: {
