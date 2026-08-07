@@ -609,11 +609,19 @@ mod tests {
     fn disabled_tools_are_not_offered_to_the_model() {
         // Only what the user enabled reaches the schema. A model cannot call
         // what it was never told exists.
-        let schema = openai_schema(&["set_system_theme".to_string()], &[]);
-        assert_eq!(
-            schema.len(),
-            if cfg!(target_os = "windows") { 1 } else { 0 }
-        );
+        //
+        // Deliberately a `Platform::Any` tool. This used to enable
+        // `set_system_theme` and expect it back only on Windows, which was true
+        // when that tool was `Platform::Windows` and quietly wrong once it grew
+        // a macOS implementation and became `Platform::Desktop`. The stale
+        // expectation survived because the machine this was written on was
+        // Linux, where `Desktop` is unsupported and the count was 0 either way
+        // — it only failed on the first Mac that ran it. Platform filtering has
+        // its own test (`a_tool_is_only_offered_where_it_can_actually_run`);
+        // this one is about the enabled list and should not depend on the host.
+        let schema = openai_schema(&["get_system_info".to_string()], &[]);
+        assert_eq!(schema.len(), 1);
+        assert_eq!(schema[0]["function"]["name"], "get_system_info");
 
         let none = openai_schema(&[], &[]);
         assert!(none.is_empty());

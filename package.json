@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.34.5",
   "description": "A desktop companion agent featuring Remielle Dan \u2014 floating mascot with an LLM chat panel.",
   "license": "MIT",
   "scripts": {
