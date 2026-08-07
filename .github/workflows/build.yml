@@ -12,7 +12,7 @@
 # Nothing here is signed. On Windows SmartScreen will warn on first run, and on
 # macOS Gatekeeper will refuse until the user right-click → Opens once, or runs
 # `xattr -dr com.apple.quarantine`. Signing needs paid certificates; see §9 of
-# HANDOFF.md, it is the user's call.
+# session/HANDOFF.md, it is the user's call.
 
 name: Build installers
 
@@ -85,7 +85,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `icon.icns` is deliberately not checked in — see HANDOFF.md §2. It is
+      # `icon.icns` is deliberately not checked in — see session/HANDOFF.md §2. It is
       # generated from the same source PNG as every other icon, so committing it
       # would be committing a build output. Generating it here also regenerates
       # the Windows `.ico`, which is harmless and keeps the two in step.

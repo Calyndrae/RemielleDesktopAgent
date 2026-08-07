@@ -4,10 +4,10 @@
   <img src="src-tauri/icons/128x128.png" width="96" alt="" />
 </p>
 
-A desktop companion for Windows: **蕾米埃尔 (Remielle Dan)** floats on your
-desktop with a transparent background, plays an idle animation, and opens an
-LLM-backed chat panel when you click her. Her animation follows what the model is
-doing — idle → thinking → drawing.
+A desktop companion: **蕾米埃尔 (Remielle Dan)** floats on your desktop with a
+transparent background, plays an idle animation, and opens an LLM-backed chat
+panel when you click her. Her animation follows what the model is doing —
+idle → thinking → drawing.
 
 > **Unofficial, non-commercial fan project.** Not affiliated with, endorsed by,
 > or approved by HoYoverse. The bundled artwork is CC BY-NC-SA 4.0 and may not be
@@ -17,33 +17,66 @@ doing — idle → thinking → drawing.
 
 ## Status
 
-Early development. Milestone **M0** (transparent overlay, click-through hit
-testing, sprite rendering, drag) is in progress; nothing is shippable yet.
+Windows-first by design; **macOS builds and runs**. The overlay, chat panel,
+streaming, provider support, tool loop, settings and ambient behaviour are
+implemented, with 157 Rust tests and 78 frontend tests.
 
-## Features (planned)
+| Platform | State |
+|---|---|
+| macOS (Apple Silicon) | Builds, launches, runs as an accessory process. Transparency confirmed. |
+| macOS (Intel) | Configured, never built. |
+| Windows | Configured and unit-tested, **never built or run**. |
 
-- Transparent always-on-top sprite that never blocks clicks to what's underneath
+Not yet built at all: tray icon, run-at-login, fullscreen-game auto-hide, slash
+commands, and the proactive-greeting UI. `session/HANDOFF.md` §5 has the
+prioritised list and the reasoning.
+
+## Features
+
+- Transparent always-on-top sprite that does not block clicks to what is
+  underneath — hit-tested in Rust against the current animation frame's alpha
 - Chat panel with streaming responses, expandable reasoning, copy / regenerate
 - Providers: OpenAI-compatible (OpenAI, DeepSeek, Grok, OpenRouter, Ollama) and
   Google Gemini
-- API keys stored in the **Windows Credential Manager**, never in a config file
-- Web search — provider-native where available, with an agentic
-  search → pick-links → fetch → answer loop for providers without it
-- Sessions are **not** kept by default; you're asked whether to save on close
-- Slash commands, including `/emote change <name>` with live previews
-- Occasional proactive greetings, with granular control over what context gets
-  sent to the model
+- API keys stored in the OS credential store — Keychain on macOS, Credential
+  Manager via DPAPI on Windows. Never in a config file, and never readable from
+  JavaScript: there is no command that returns a key
+- A fixed catalog of typed tools with enum-constrained parameters. No shell tool,
+  and a test fails the build if one is ever added
+- Sessions are **not** kept by default; you are asked whether to save on close
+- Export to Markdown, JSON, or a handoff for another assistant
+- Occasional proactive behaviour with quiet hours, a daily cap and a "not today"
+- Light and dark panel themes, both opaque, both measured against WCAG AA
 - Bilingual UI (简体中文 / English)
+
+Planned, not built: web search with an agentic search → pick-links → fetch loop
+for providers without native search, and `/emote change <name>` with live
+previews.
 
 ## Tech stack
 
 Tauri v2 · React 19 · TypeScript · Rust
 
-Typography is **Noto Serif SC**, vendored under the SIL Open Font License —
-see [NOTICE.md](NOTICE.md).
+Typography is **Noto Serif SC**, vendored as ~100 `unicode-range` subsets under
+the SIL Open Font License — see [NOTICE.md](NOTICE.md). It is committed rather
+than fetched because the app must render with no network and the webview's CSP
+blocks external hosts.
 
-Windows is the shipping target. Platform-specific code is isolated in
-`src-tauri/src/platform/` so a macOS port is additive rather than invasive.
+## Layout
+
+```
+src/           React frontend — overlay, chat panel, settings, state
+src-tauri/     Rust backend — windowing, click-through, LLM, tools, secrets
+assets/        Her animation pack and registration offsets
+program/       Finished builds, one folder per platform
+  macos/         .app and .dmg
+  windows/       .exe installer
+session/       Handoff notes, design decisions, deletion ledger
+scripts/       Font vendoring, layout regression check, demo inliner
+```
+
+`program/*/README.md` explains how each platform's artefacts are produced.
+Build outputs there are gitignored; the READMEs are not.
 
 ## Development
 
@@ -52,19 +85,47 @@ pnpm install
 pnpm tauri dev
 ```
 
-Before the sprite will render you need to supply the animation files — see
-[`assets/packs/little-remielle/README.md`](assets/packs/little-remielle/README.md).
+The repository pins pnpm 10 via `packageManager`; with Corepack enabled the
+right version is fetched automatically.
 
 ```bash
-pnpm typecheck                 # TypeScript
-pnpm test                      # frontend unit tests
-cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit tests
+pnpm typecheck       # TypeScript
+pnpm test            # 78 frontend tests
+pnpm layout:check    # Playwright layout regression on the chat panel
+pnpm demo            # browser demo of the real components, no Tauri
+pnpm demo:build      # → demo-standalone.html, one self-contained file
+
+cd src-tauri
+cargo test           # 157 tests
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
 ```
 
-### Building on Linux
+## Building
 
-The app targets Windows, but the Rust side compiles on Linux for CI and
-type-checking. It needs the usual Tauri system dependencies:
+There is no cross-compile. Tauri bundles against the host's own webview and
+packager, so each platform's installer must be produced on that platform.
+`bundle.targets` is `["nsis", "app", "dmg"]` and Tauri skips whichever do not
+apply, so the same command is correct on both.
+
+```bash
+pnpm tauri icon src-tauri/icons/icon.png   # first time only, generates icon.icns
+pnpm tauri build
+```
+
+See [`program/macos/README.md`](program/macos/README.md) and
+[`program/windows/README.md`](program/windows/README.md) for the per-platform
+details, including the caveats of the icon step and how to get a Windows
+installer without a Windows machine.
+
+Neither platform is code-signed. macOS needs a right-click → Open or
+`xattr -dr com.apple.quarantine`; Windows shows a SmartScreen warning.
+
+### Linux
+
+Not a target. The Rust side compiles there for CI and type-checking, which is
+what `.github/workflows/check.yml` uses — none of the tests need a webview. It
+needs the usual Tauri system dependencies:
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev build-essential file libxdo-dev \
