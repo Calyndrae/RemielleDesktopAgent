@@ -29,9 +29,29 @@ use provider::{ApiError, Protocol, ProviderInfo};
 /// Single channel the frontend subscribes to for streaming.
 pub const EVENT: &str = "chat://event";
 
-/// Connect timeout. The read side is deliberately unbounded — a long reply can
-/// legitimately take minutes, and cancelling is the user's job, not a timer's.
+/// Time allowed to establish the connection.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Longest silence tolerated *between* chunks once a stream is running.
+///
+/// This used to be unbounded, on the reasoning that a long reply can take
+/// minutes and cancelling is the user's job rather than a timer's. That is
+/// right about total duration and wrong about silence, and the difference is
+/// what hung the app: if the provider stops sending mid-stream without closing
+/// the connection, `bytes.next()` waits forever. No error is raised, so no
+/// `Failed` is emitted, so the panel sits on 「思考中…」 with a working stop
+/// button and nothing else — which is exactly what a reasoning model produced
+/// after streaming its reasoning and stalling before the answer.
+///
+/// `read_timeout` bounds the gap between reads, not the request. A reply that
+/// streams steadily for ten minutes is unaffected; only one that goes quiet is
+/// cut, and then it surfaces as a real error the user can act on.
+///
+/// 90s is deliberately generous. Reasoning models genuinely pause — the
+/// observed gap before a `gpt-oss` model's first content token is seconds, not
+/// minutes — and the cost of being wrong here is killing a live reply, so the
+/// bound only needs to be short enough that nobody waits forever.
+const READ_TIMEOUT: Duration = Duration::from_secs(90);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -218,6 +238,9 @@ pub fn resolve_tool_confirm(
 fn client() -> Result<reqwest::Client, ApiError> {
     reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
+        // Not `.timeout()`, which caps the whole request and would kill a long
+        // but healthy reply. This one only fires on silence. See READ_TIMEOUT.
+        .read_timeout(READ_TIMEOUT)
         .build()
         .map_err(|e| ApiError::Network {
             message: e.to_string(),
@@ -520,7 +543,18 @@ async fn run_round<R: Runtime>(
             return Err(ApiError::Cancelled);
         }
 
-        let chunk = next.map_err(|e| provider::classify_transport(&e))?;
+        // A stream that dies after a 200 is the failure mode with no footprint:
+        // the request logged as fine, and everything after it is silence. This
+        // is the line that says what actually happened.
+        let chunk = next.map_err(|e| {
+            let error = provider::classify_transport(&e);
+            log::warn!(
+                "{} {model}: stream broke after {} content chars: {error}",
+                info.id,
+                outcome.text.chars().count(),
+            );
+            error
+        })?;
         pending.extend_from_slice(&chunk);
         let text = take_utf8(&mut pending);
         if text.is_empty() {
@@ -893,18 +927,31 @@ pub async fn start_chat<R: Runtime>(
     tauri::async_runtime::spawn(async move {
         let outcome = run_stream(handle.clone(), id.clone(), request, cancelled).await;
 
+        // Every turn ends on exactly one of these three lines. Without them a
+        // hung panel is ambiguous — it could be Rust never finishing, or Rust
+        // finishing and the frontend never hearing about it, and those have
+        // nothing in common as bugs.
         let event = match outcome {
-            Ok(()) => StreamEvent::Done {
-                stream_id: id.clone(),
-            },
+            Ok(()) => {
+                log::info!("stream {id}: done");
+                StreamEvent::Done {
+                    stream_id: id.clone(),
+                }
+            }
             // Cancellation is a user action, not a failure to report.
-            Err(ApiError::Cancelled) => StreamEvent::Done {
-                stream_id: id.clone(),
-            },
-            Err(error) => StreamEvent::Failed {
-                stream_id: id.clone(),
-                error,
-            },
+            Err(ApiError::Cancelled) => {
+                log::info!("stream {id}: cancelled");
+                StreamEvent::Done {
+                    stream_id: id.clone(),
+                }
+            }
+            Err(error) => {
+                log::warn!("stream {id}: failed: {error}");
+                StreamEvent::Failed {
+                    stream_id: id.clone(),
+                    error,
+                }
+            }
         };
         let _ = handle.emit(EVENT, event);
 
