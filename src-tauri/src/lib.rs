@@ -72,6 +72,23 @@ pub fn run() {
             quit_app,
         ])
         .setup(|app| {
+            // An agent, not an application.
+            //
+            // `LSUIElement` in Info.plist is necessary but *not sufficient*, and
+            // the difference cost a build to find. The plist only sets the
+            // policy Cocoa starts with; tao then calls `setActivationPolicy`
+            // with `Regular` while it builds the NSApplication, which overwrites
+            // it. The result is a floating character that owns a menu bar, sits
+            // in the Dock, and answers ⌘-Tab — verified with
+            // `lsappinfo`, which reported `ApplicationType="Foreground"` on a
+            // bundle whose plist plainly said `LSUIElement => true`.
+            //
+            // Setting it here runs after tao and therefore wins. Keep both: the
+            // plist governs the moment before this line executes, so dropping it
+            // would put a Dock icon on screen for the length of the launch.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // Passthrough is *not* initialised here. The overlay is created
             // hidden, and on GTK a window that has never been shown has no
             // underlying GDK window yet — `set_ignore_cursor_events` unwraps it
