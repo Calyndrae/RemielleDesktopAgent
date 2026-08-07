@@ -43,12 +43,23 @@ pub struct ToolFragment {
 }
 
 impl ParsedChunk {
+    /// Nothing here worth acting on.
+    ///
+    /// `finish_reason` counts as something. The last chunk of an
+    /// OpenAI-compatible stream is `{"delta":{},"finish_reason":"stop"}` — no
+    /// text, no usage, nothing but the terminator — so leaving it out of this
+    /// made the one chunk that says how the reply ended indistinguishable from
+    /// a keepalive, and the caller skipped it. The consequence was not cosmetic:
+    /// with no terminator ever observed, a stream cut off halfway looked exactly
+    /// like one that finished, and a truncated answer was presented as a
+    /// complete one.
     pub fn is_empty(&self) -> bool {
         self.content.is_empty()
             && self.reasoning.is_empty()
             && self.usage.is_none()
             && self.citations.is_empty()
             && self.tool_fragments.is_empty()
+            && self.finish_reason.is_none()
     }
 }
 
@@ -255,6 +266,23 @@ mod tests {
         // one token beats aborting a reply mid-sentence.
         assert!(parse_chunk("{not json").is_none());
         assert!(parse_chunk("").is_none());
+    }
+
+    #[test]
+    fn a_finish_reason_alone_is_not_an_empty_chunk() {
+        // The last chunk of a stream is exactly this: no text, no usage, just
+        // the terminator. Counting it as empty made the caller skip it, which
+        // left nothing able to tell a finished reply from a severed one.
+        let parsed =
+            parse_chunk(r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#).expect("parsed");
+        assert!(!parsed.is_empty(), "the terminator must not read as empty");
+        assert_eq!(parsed.finish_reason.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn a_genuine_keepalive_is_still_empty() {
+        let parsed = parse_chunk(r#"{"choices":[{"delta":{}}]}"#).expect("parsed");
+        assert!(parsed.is_empty());
     }
 
     #[test]

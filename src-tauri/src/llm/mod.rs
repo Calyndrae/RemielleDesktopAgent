@@ -447,6 +447,16 @@ struct RoundOutcome {
     /// The prose, kept so the next round's history has what she already said.
     text: String,
     calls: Vec<toolcall::ToolCall>,
+    /// Why the provider stopped, if it ever said.
+    ///
+    /// `None` after a completed loop means the connection ended without a
+    /// terminating chunk — the reply was cut off mid-sentence and the only
+    /// thing that knows is this field.
+    finish_reason: Option<String>,
+    /// Reasoning characters seen, for the log. Not kept as text: it is already
+    /// streamed to the panel and holding a second copy of a chain of thought
+    /// for a log line is not a trade worth making.
+    reasoning_chars: usize,
 }
 
 fn emit_once<R: Runtime>(
@@ -609,6 +619,7 @@ async fn run_round<R: Runtime>(
                         }
                     }
                     if !parsed.reasoning.is_empty() {
+                        outcome.reasoning_chars += parsed.reasoning.chars().count();
                         let _ = app.emit(
                             EVENT,
                             StreamEvent::Reasoning {
@@ -616,6 +627,9 @@ async fn run_round<R: Runtime>(
                                 text: parsed.reasoning,
                             },
                         );
+                    }
+                    if parsed.finish_reason.is_some() {
+                        outcome.finish_reason = parsed.finish_reason.clone();
                     }
                     for fragment in parsed.tool_fragments {
                         calls.push(
@@ -693,6 +707,45 @@ async fn run_round<R: Runtime>(
     say(app, tail.content, &mut outcome);
 
     outcome.calls = calls.finish();
+
+    log::info!(
+        "{} {model}: round ended, finish={:?}, {} content chars, {} reasoning chars, {} tool calls",
+        info.id,
+        outcome.finish_reason.as_deref().unwrap_or("<none>"),
+        outcome.text.chars().count(),
+        outcome.reasoning_chars,
+        outcome.calls.len(),
+    );
+
+    /*
+     * A stream that stops without saying why did not finish, it was cut.
+     *
+     * Every OpenAI-compatible provider ends a completion with a chunk carrying
+     * `finish_reason`. Reaching the end of the byte stream without having seen
+     * one means the connection closed mid-reply — which is precisely what
+     * produced a chain of thought that stops mid-word with no answer after it,
+     * reported to the user as a completed turn because nothing here noticed.
+     *
+     * Treated as an error rather than swallowed. Whatever arrived has already
+     * been streamed to the panel and stays on screen; this only adds the fact
+     * that there was supposed to be more, which is the part the user cannot
+     * work out for themselves.
+     *
+     * Tool calls are exempt: a round that produced calls is about to run them
+     * and continue, and some servers do close the stream after the call
+     * fragments without a terminator.
+     */
+    if outcome.finish_reason.is_none() && outcome.calls.is_empty() {
+        log::warn!(
+            "{} {model}: stream ended with no finish_reason after {} content chars — truncated",
+            info.id,
+            outcome.text.chars().count(),
+        );
+        return Err(ApiError::Malformed {
+            message: "回答没说完就断了 / the reply was cut off before it finished".into(),
+        });
+    }
+
     Ok(outcome)
 }
 
@@ -1333,6 +1386,7 @@ mod tool_loop_tests {
                 "set_system_theme",
                 serde_json::json!({"mode": "dark"}),
             )],
+            ..RoundOutcome::default()
         };
 
         let turn = assistant_turn(Protocol::OpenAiCompatible, &outcome);
@@ -1360,6 +1414,7 @@ mod tool_loop_tests {
                 name: "set_system_theme".into(),
                 arguments: Err("not valid JSON".into()),
             }],
+            ..RoundOutcome::default()
         };
 
         let turn = assistant_turn(Protocol::OpenAiCompatible, &outcome);
