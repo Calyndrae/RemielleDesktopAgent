@@ -184,11 +184,20 @@ Confirmed by running it:
 - **Resources bundle correctly.** All seven animations, `pack.json` and the
   persona directory are present under `Contents/Resources/`.
 
-Still unverified: **click-through**. Whether a click on the empty space around
-her reaches the desktop underneath has not been exercised end-to-end on macOS.
-The hit-test logic has unit tests and the Rust path uses
-`AppHandle::cursor_position` off Windows, but nobody has clicked a desktop icon
-through her yet. Do this before believing the platform is done.
+Two things remain unverified on macOS, both for the same reason — the session's
+input tooling refuses to click the regions involved, so nobody has *actually*
+done it:
+
+- **Click-through.** Whether a click on the empty space around her reaches the
+  desktop underneath. The hit-test logic has unit tests and the Rust path uses
+  `AppHandle::cursor_position` off Windows, but no desktop icon has been clicked
+  through her. Do this before believing the platform is done.
+- **The tray menu's items.** The icon is confirmed in the menu bar and rendered
+  in colour rather than flattened to a template silhouette. Show/hide, come back
+  on screen, settings and quit compile and are unit-tested at the label level,
+  but none has been clicked.
+
+Both are seconds of manual checking for anyone sitting at the machine.
 
 The build is ad-hoc signed (linker signature only). Built locally it launches
 without complaint because it never receives a quarantine attribute; copied to
@@ -202,18 +211,32 @@ Ordered by what actually unblocks daily use.
 
 ### 5.1 Shippability (highest value, nothing depends on it)
 
-- **Tray icon.** There is none. The only quit path is her right-click menu, so
-  if she is ever hidden she is unreachable. `tray-icon` is already a Tauri
-  feature in `Cargo.toml` and unused.
-- **Run at login.** `tauri-plugin-autostart` is a dependency and unwired.
-- **Fullscreen game auto-hide.** `src-tauri/src/platform/windows.rs` has the
-  foreground-window detection; nothing calls it. The user plays 绝区零 and
-  explicitly wants her to get out of the way.
-- **Multi-monitor / DPI.** `onScaleChanged` re-places the overlay, but nothing
-  handles a monitor being unplugged — she can end up anchored off-screen.
+- ~~**Tray icon.**~~ **Done.** `src-tauri/src/window/tray.rs`: show/hide, come
+  back on screen, settings, quit. Installed in `setup()` before anything that
+  can fail, so it works even if the webview never loads. This also unblocked the
+  "hide" item in her right-click menu, which had been written and deliberately
+  withheld. Confirmed present in the macOS menu bar; **the menu items themselves
+  have not been clicked** — see §4.1.
+- ~~**Multi-monitor / DPI.**~~ **Done for the unplug case.** A stranding check
+  rides the passthrough poller every ~2 s and re-places the overlay when its
+  rect overlaps no connected display. Deliberately permissive — one overlapping
+  pixel counts as on-screen, because recovery moves the user's window and a
+  false positive is worse than a false negative. The tray's "come back on
+  screen" is the manual escape hatch for everything subtler. Six unit tests in
+  `window::overlay::tests`. Not covered: a display that changes *resolution*
+  rather than disappearing.
+- **Run at login.** `tauri-plugin-autostart` is a dependency and unwired. The
+  macOS `LaunchAgent` launcher is already configured in `lib.rs`, so this is
+  a Settings toggle and a plugin call. Probably the smallest remaining job.
+- **Fullscreen game auto-hide.** **The previous note here was wrong**, and it
+  understated the work: `src-tauri/src/platform/windows.rs` contains exactly one
+  function, `cursor_position`. There is no foreground-window detection anywhere
+  to wire up — this is a feature to write, not a call to add. Note also that
+  绝区零 has no native macOS build, so this is Windows-only value.
 - **A green CI run.** The two workflows exist but have never run once. Getting
   `check.yml` green is quick and tells you the Linux dependency list is right;
   getting `build.yml` green is what actually produces the Windows installer.
+  **Blocked:** the working tree is local with no remote (see the header).
 
 ### 5.2 The proactive-greeting branch is a deliberate stub
 
