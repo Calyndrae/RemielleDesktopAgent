@@ -100,6 +100,62 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
     [visible, geometry.width, geometry.height],
   );
 
+  /*
+   * How far the user has dragged the panel from where it was placed.
+   *
+   * A ref, not state: the pointer moves at frame rate and routing that through
+   * React would re-render the whole transcript on every pixel. The transform is
+   * written straight to the node, which is what the flight already does.
+   *
+   * Cleared whenever the panel opens, because `rect` is recomputed then and an
+   * offset from the previous position would apply to a placement that no longer
+   * exists.
+   */
+  const dragOffset = useRef({ x: 0, y: 0 });
+  useLayoutEffect(() => {
+    if (phase === "opening") dragOffset.current = { x: 0, y: 0 };
+  }, [phase]);
+
+  /**
+   * Drags the panel by its header.
+   *
+   * Only the header, and only the parts of it that are not controls — a drag
+   * that started on the close button would mean the button could never be
+   * clicked, since the pointer inevitably moves a pixel or two.
+   */
+  const startDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    const element = rootRef.current;
+    if (!element || phase !== "open") return;
+
+    event.preventDefault();
+    const from = { x: event.clientX, y: event.clientY };
+    const base = { ...dragOffset.current };
+    element.setPointerCapture(event.pointerId);
+    element.style.transition = "none";
+
+    const move = (move: PointerEvent) => {
+      dragOffset.current = {
+        x: base.x + (move.clientX - from.x),
+        y: base.y + (move.clientY - from.y),
+      };
+      element.style.transform = `translate3d(${rect.centreX + dragOffset.current.x}px, ${
+        rect.centreY + dragOffset.current.y
+      }px, 0)`;
+    };
+
+    const up = () => {
+      element.releasePointerCapture(event.pointerId);
+      element.removeEventListener("pointermove", move);
+      element.removeEventListener("pointerup", up);
+      element.removeEventListener("pointercancel", up);
+    };
+
+    element.addEventListener("pointermove", move);
+    element.addEventListener("pointerup", up);
+    element.addEventListener("pointercancel", up);
+  };
+
   // Resting transform, also the starting point of the close flight.
   //
   // On open the panel springs out from the character's direction rather than
@@ -109,7 +165,9 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
     const element = rootRef.current;
     if (!element || phase === "closing") return;
 
-    const resting = `translate3d(${rect.centreX}px, ${rect.centreY}px, 0)`;
+    const resting = `translate3d(${rect.centreX + dragOffset.current.x}px, ${
+      rect.centreY + dragOffset.current.y
+    }px, 0)`;
 
     if (phase !== "opening" || prefersReducedMotion()) {
       element.style.transition = "none";
@@ -162,8 +220,10 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
 
     const sprite = getSpriteFrame();
     const ends = {
-      fromX: rect.centreX,
-      fromY: rect.centreY,
+      // Where it is, not where it was placed: after a drag those differ, and
+      // flying from the original spot would make the panel jump before it moves.
+      fromX: rect.centreX + dragOffset.current.x,
+      fromY: rect.centreY + dragOffset.current.y,
       toX: sprite.centreX,
       toY: sprite.centreY,
     };
@@ -242,7 +302,7 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
       }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <header className="panel__header">
+      <header className="panel__header" onPointerDown={startDrag}>
         <span className="panel__title">蕾米埃尔</span>
         {/* Running cost, always visible rather than buried in a menu. */}
         {sessionUsage.total > 0 && (

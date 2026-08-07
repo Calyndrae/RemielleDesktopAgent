@@ -387,7 +387,18 @@ export function SettingsApp() {
         </div>
 
         <label className="field">
-          <span className="field__label">人格设定</span>
+          <span className="field__label">说话方式</span>
+          {/*
+            Renamed from 「人格设定」, which promised more than this box gives and
+            more than it should. Who she is now lives in the program and is sent
+            with every message whatever this says; what is left here is manner
+            and voice. The hint spells that out, because someone who clears this
+            box deserves to know what they have and have not changed.
+          */}
+          <span className="field__hint">
+            她是谁写在程序里，改不掉，也不该改 —— 这台桌宠从动画到名字都是她。
+            这里只管她怎么说话：语气、分寸、话多话少。清空就是不加额外要求，她还是她。
+          </span>
           <textarea
             className="control control--area"
             rows={7}

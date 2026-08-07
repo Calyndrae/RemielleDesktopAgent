@@ -4,6 +4,7 @@ import { exportFilename, exportSession } from "@/lib/exportSession";
 import { copyText, saveText } from "@/lib/saveText";
 import { COUNTER_THRESHOLD, MAX_INPUT_LENGTH, useChatStore } from "@/state/chat";
 import { currentProvider, searchAvailable, useConfigStore } from "@/state/config";
+import { ipc } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { Icon } from "./icons";
@@ -14,7 +15,24 @@ const MAX_TEXTAREA_HEIGHT = 132;
 export function Composer() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
+  const modelRef = useRef<HTMLButtonElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  /*
+   * Switching model is a chat decision, not a configuration one.
+   *
+   * This pill used to open the settings window, which is a strange answer to
+   * "use the other model for this next message" — it puts a whole form between
+   * the user and a choice they are making about the sentence they are typing.
+   * The list is fetched when the menu opens rather than held in the store,
+   * because it is a network call whose answer changes rarely and matters only
+   * while the menu is up.
+   *
+   * `null` means not fetched yet; the empty array means fetched and the
+   * provider returned nothing, and those two want different menus.
+   */
+  const [modelMenu, setModelMenu] = useState<{ x: number; y: number } | null>(null);
+  const [models, setModels] = useState<string[] | null>(null);
 
   const draft = useChatStore((s) => s.draft);
   const streaming = useChatStore((s) => s.streaming);
@@ -64,6 +82,44 @@ export function Composer() {
   };
 
   const flash = (text: string) => useChatStore.getState().notify(text);
+
+  /*
+   * The model list, plus a way out to the settings that this menu cannot cover.
+   *
+   * Provider and key still belong in Settings — they are configuration, and the
+   * form has the verification and the key handling. Which model answers the
+   * next message is not configuration, so it lives here.
+   */
+  const modelItems: MenuItem[] =
+    models === null
+      ? [{ id: "loading", label: "正在问服务商有哪些模型…", disabled: true, onSelect: () => {} }]
+      : [
+          ...(models.length === 0
+            ? [
+                {
+                  id: "none",
+                  // Says what to do about it. "没有模型" alone leaves the user
+                  // guessing whether it is broken or just unconfigured.
+                  label: "没拿到模型列表，先去设置里配好密钥",
+                  disabled: true,
+                  onSelect: () => {},
+                },
+              ]
+            : models.map((id) => ({
+                id: `model-${id}`,
+                label: id,
+                checked: id === model,
+                onSelect: () => {
+                  useConfigStore.getState().patch({ model: id });
+                  flash(`换成 ${id} 了`);
+                },
+              }))),
+          {
+            id: "open-settings",
+            label: "其他设置…",
+            onSelect: () => void openSettings(),
+          },
+        ];
 
   const menuItems: MenuItem[] = [
     {
@@ -160,10 +216,30 @@ export function Composer() {
           </button>
 
           <button
+            ref={modelRef}
             type="button"
             className="modelpill"
-            title={`${providerLabel} · ${model || "未选择模型"} —— 在设置里切换`}
-            onClick={openSettings}
+            title={`${providerLabel} · ${model || "未选择模型"} —— 点一下换模型`}
+            onClick={() => {
+              if (modelMenu) {
+                setModelMenu(null);
+                return;
+              }
+              const box = modelRef.current?.getBoundingClientRect();
+              // Upward, like the "+" menu: the pill sits on the panel's bottom
+              // row and a downward menu would open past the work area.
+              if (box) setModelMenu({ x: box.left, y: box.top - 6 });
+
+              // Refetched each time it opens. A model list that went stale
+              // while the panel sat open would offer a choice the provider no
+              // longer honours, and the call is cheap next to being wrong.
+              setModels(null);
+              const { provider, baseUrl } = useConfigStore.getState();
+              void ipc
+                .listModels(provider, baseUrl.trim() || null)
+                .then(setModels)
+                .catch(() => setModels([]));
+            }}
           >
             <span className="modelpill__name">{providerLabel}</span>
             <span className="modelpill__variant">{model || "未选择模型"}</span>
@@ -246,6 +322,19 @@ export function Composer() {
           regionId="composer-menu"
           items={menuItems}
           onClose={() => setMenu(null)}
+        />
+      )}
+
+      {modelMenu && (
+        <ContextMenu
+          x={modelMenu.x}
+          y={modelMenu.y}
+          above
+          // Its own region id. Both menus can be open at once, and a shared key
+          // would let whichever unmounts second delete the other's hit area.
+          regionId="composer-models"
+          items={modelItems}
+          onClose={() => setModelMenu(null)}
         />
       )}
     </div>

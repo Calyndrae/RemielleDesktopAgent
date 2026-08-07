@@ -42,6 +42,14 @@ interface SpriteStore extends PersistedPlacement {
   setPinned: (pinned: boolean) => void;
   setAlwaysOnTop: (value: boolean) => void;
   setMonitor: (monitor: string | null) => void;
+  /**
+   * Puts her back where she started, for the tray's "come back on screen".
+   *
+   * Anchor and scale only. `pinned` and `alwaysOnTop` are preferences the user
+   * set on purpose and have nothing to do with being lost; resetting them would
+   * make a rescue silently undo unrelated choices.
+   */
+  resetPlacement: () => void;
 }
 
 const clamp = (value: number, min: number, max: number) =>
@@ -105,6 +113,15 @@ export const useSpriteStore = create<SpriteStore>((set, get) => ({
 
   setMonitor: (monitor) => {
     set({ monitor });
+    persist(get());
+  },
+
+  resetPlacement: () => {
+    set({
+      anchorX: DEFAULTS.anchorX,
+      anchorY: DEFAULTS.anchorY,
+      scale: DEFAULTS.scale,
+    });
     persist(get());
   },
 }));

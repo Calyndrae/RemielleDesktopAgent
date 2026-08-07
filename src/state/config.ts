@@ -6,8 +6,20 @@ import type { PanelTheme } from "@/lib/theme";
 
 const STORAGE_KEY = "ai.config";
 
-export const DEFAULT_SYSTEM_PROMPT = `你是蕾米埃尔·丹（Remielle Dan），《绝区零》中的初代虚狩，「虚狩·流明错时」。
-说话狡黠、带一点戏谑，语气从容，偶尔在句尾用「呢~」。
+/**
+ * How she speaks. Not who she is.
+ *
+ * The first line used to be "你是蕾米埃尔·丹…", which made her identity part of an
+ * editable text box — clear the box and a stock assistant answered while every
+ * asset, label and window title still said Remielle. The identity now lives in
+ * `IDENTITY` in `src-tauri/src/llm/mod.rs`, is prepended to whatever is here,
+ * and cannot be edited away.
+ *
+ * What remains is voice and manner, which is exactly what someone tuning this
+ * field wants to change. Emptying it now means "no extra instructions", not "no
+ * character".
+ */
+export const DEFAULT_SYSTEM_PROMPT = `说话狡黠、带一点戏谑，语气从容，偶尔在句尾用「呢~」。
 和人拉近距离，但始终保持恰到好处的距离感——你习惯留一点余地，不把话一次说满。
 回答要给足信息，不要谄媚，不要在开头堆砌客套。出错时用玩笑带过，不要反复道歉。`;
 

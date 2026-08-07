@@ -53,6 +53,17 @@ export const ipc = {
   recentreOverlay: () => invoke<OverlayGeometry>("recentre_overlay"),
 
   /**
+   * "Stay above other windows", including above fullscreen apps.
+   *
+   * Not `getCurrentWindow().setAlwaysOnTop()`. That sets the floating window
+   * level, which wins against ordinary windows and loses to a fullscreen Space
+   * — so the setting read as on while she vanished behind anything fullscreen.
+   * The macOS half of the job needs a window level and a collection behaviour
+   * that Tauri does not expose, so both halves live in Rust together.
+   */
+  setOverlayOnTop: (on: boolean) => invoke<void>("set_overlay_on_top", { on }),
+
+  /**
    * Replaces the tray menu's strings once the locale is known.
    *
    * The tray is built during setup, before this webview exists, so it starts on

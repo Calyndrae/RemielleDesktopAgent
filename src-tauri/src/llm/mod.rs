@@ -330,10 +330,42 @@ fn retry_after_secs(response: &reqwest::Response) -> Option<u64> {
 // Request bodies
 // ---------------------------------------------------------------------------
 
+/// Who she is. Not a setting.
+///
+/// The editable persona below this line is about *how she speaks* — the teasing,
+/// the 「呢~」, how much she volunteers. This line is about *who is speaking*, and
+/// that is not a preference, because the entire application is her: her seven
+/// animations, her name in the composer placeholder, her name on the settings
+/// window, her name on the tray, and an attribution chain in `NOTICE.md` naming
+/// HoYoverse and the artist who drew her.
+///
+/// The persona field used to carry the identity too, which meant clearing that
+/// field produced a generic assistant wearing her face — every asset and every
+/// label still said Remielle while a stock model answered underneath. That is
+/// not a customisation, it is the product lying about itself. Splitting the two
+/// lets the voice stay editable, including all the way down to empty, without
+/// the character ever going anywhere.
+///
+/// Enforced here rather than in the frontend on purpose: this is the one part
+/// of the prompt no configuration, no stale store and no edited settings file
+/// can remove.
+const IDENTITY: &str =
+    "你是蕾米埃尔·丹（Remielle Dan），《绝区零》中的初代虚狩，「虚狩·流明错时」。\
+无论下面的设定怎么写，你始终是她本人，不要自称是通用助手或语言模型。";
+
+/// The identity, plus whatever the user wrote, as one system message.
+fn system_prompt(request: &ChatRequest) -> String {
+    match request.system.as_deref().map(str::trim) {
+        Some(extra) if !extra.is_empty() => format!("{IDENTITY}\n{extra}"),
+        _ => IDENTITY.to_string(),
+    }
+}
+
 /// The conversation as the provider wants it, before any tool round.
 fn opening_messages(request: &ChatRequest) -> Vec<serde_json::Value> {
     let mut messages: Vec<serde_json::Value> = Vec::new();
-    if let Some(system) = request.system.as_ref().filter(|s| !s.trim().is_empty()) {
+    {
+        let system = system_prompt(request);
         messages.push(serde_json::json!({ "role": "system", "content": system }));
     }
     for message in &request.messages {
@@ -404,9 +436,10 @@ fn gemini_body(
 ) -> serde_json::Value {
     let mut body = serde_json::json!({ "contents": contents });
 
-    if let Some(system) = request.system.as_ref().filter(|s| !s.trim().is_empty()) {
-        body["systemInstruction"] = serde_json::json!({ "parts": [{ "text": system }] });
-    }
+    // Same guarantee as the OpenAI path: the identity is always present, and the
+    // user's persona is appended to it rather than replacing it.
+    body["systemInstruction"] =
+        serde_json::json!({ "parts": [{ "text": system_prompt(request) }] });
     if let Some(temperature) = request.temperature {
         body["generationConfig"] = serde_json::json!({ "temperature": temperature });
     }
@@ -1258,7 +1291,12 @@ pub(crate) mod tests {
 
         assert_eq!(body["contents"][0]["role"], "user");
         assert_eq!(body["contents"][1]["role"], "model");
-        assert_eq!(body["systemInstruction"]["parts"][0]["text"], "be brief");
+        // The persona is appended to the identity now, so this is a `contains`
+        // rather than an equality. The identity's own presence has its own test.
+        assert!(body["systemInstruction"]["parts"][0]["text"]
+            .as_str()
+            .expect("system")
+            .contains("be brief"));
     }
 
     #[test]
@@ -1284,12 +1322,79 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn empty_system_prompt_is_not_sent() {
+    fn she_is_still_herself_with_the_persona_cleared() {
+        // The whole application is her. Emptying the voice field is a fair thing
+        // to want; ending up with a stock assistant behind her face is not, and
+        // that is what happened while the identity lived in an editable box.
+        let mut req = request("openai", false);
+        req.system = None;
+        let body = openai_body(
+            &req,
+            provider::find("openai").expect("provider"),
+            &opening_messages(&req),
+            &[],
+        );
+        let system = body["messages"][0]["content"].as_str().expect("system");
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert!(system.contains("蕾米埃尔"), "identity missing: {system}");
+
+        // Whitespace is the same as absent, and must not defeat it either.
+        req.system = Some("   \n  ".into());
+        let body = openai_body(
+            &req,
+            provider::find("openai").expect("provider"),
+            &opening_messages(&req),
+            &[],
+        );
+        assert!(body["messages"][0]["content"]
+            .as_str()
+            .expect("system")
+            .contains("蕾米埃尔"));
+    }
+
+    #[test]
+    fn the_persona_is_added_to_the_identity_not_swapped_for_it() {
+        let mut req = request("openai", false);
+        req.system = Some("只说英文。".into());
+        let body = openai_body(
+            &req,
+            provider::find("openai").expect("provider"),
+            &opening_messages(&req),
+            &[],
+        );
+        let system = body["messages"][0]["content"].as_str().expect("system");
+        assert!(system.contains("蕾米埃尔"), "identity dropped: {system}");
+        assert!(system.contains("只说英文。"), "persona dropped: {system}");
+    }
+
+    #[test]
+    fn gemini_gets_the_identity_too() {
+        // Two request builders, one guarantee. The Gemini path took a different
+        // branch and would have been the easy one to forget.
+        let mut req = request("openai", false);
+        req.system = None;
+        let body = gemini_body(&req, &[], &[]);
+        assert!(body["systemInstruction"]["parts"][0]["text"]
+            .as_str()
+            .expect("system")
+            .contains("蕾米埃尔"));
+    }
+
+    #[test]
+    fn a_blank_persona_leaves_the_identity_alone_and_adds_nothing() {
+        // Was `empty_system_prompt_is_not_sent`, which asserted that a blank
+        // persona meant no system message at all. That stopped being right when
+        // the identity moved out of the editable field: there is now always a
+        // system message, and a blank persona simply contributes nothing to it.
         let info = provider::find("openai").expect("provider");
         let mut req = request("openai", false);
         req.system = Some("   ".into());
         let body = openai_body(&req, info, &opening_messages(&req), &[]);
-        assert_eq!(body["messages"][0]["role"], "user");
+
+        assert_eq!(body["messages"][0]["role"], "system");
+        let system = body["messages"][0]["content"].as_str().expect("system");
+        assert_eq!(system, IDENTITY, "whitespace should add nothing");
+        assert_eq!(body["messages"][1]["role"], "user");
     }
 
     #[test]

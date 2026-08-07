@@ -71,6 +71,14 @@ keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
+# Reaching the NSWindow directly. Tauri's `set_always_on_top` maps to the
+# floating window level, which is above ordinary windows and *below* a
+# fullscreen Space — so she vanished the moment anything went fullscreen. Fixing
+# that needs the window level and the collection behaviour, neither of which
+# Tauri exposes. Already in the tree via tao; named here so the dependency is
+# honest rather than borrowed.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder", "NSApplication"] }
 
 [features]
 # This feature is used for production builds where `devUrl` points to the

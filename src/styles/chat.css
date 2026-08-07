@@ -75,6 +75,19 @@
      close button carries ~5px of its own padding around a 15px glyph, so 10px
      here puts the glyph's optical edge at the same 16px inset. */
   padding: 10px 10px 10px 16px;
+  /* The drag handle. `grab` rather than `default` here specifically: the panel
+     is the one surface that moves, and nothing else would tell you so. */
+  cursor: grab;
+}
+
+.panel__header:active {
+  cursor: grabbing;
+}
+
+/* The controls in the header are not handles. Without this they inherit `grab`
+   and advertise a drag that `startDrag` deliberately refuses on buttons. */
+.panel__header .iconbtn {
+  cursor: default;
 }
 
 .panel__title {

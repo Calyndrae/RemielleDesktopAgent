@@ -53,6 +53,16 @@ pub const EVENT_SETTINGS: &str = "tray://settings";
 /// matches the window she is drawn in.
 pub const EVENT_MOVED: &str = "overlay://moved";
 
+/// Emitted by the tray's "come back on screen".
+///
+/// Distinct from `EVENT_MOVED` because it asks for more. Moving the overlay is
+/// not enough on a single display: the window already covers the work area, so
+/// re-placing it changes nothing anyone can see, and the item appeared to do
+/// nothing while the toggle beside it did the same job of bringing her back.
+/// What "come back on screen" has to mean is *she* returns to a spot the user
+/// can point at, and her position is a fraction the frontend owns.
+pub const EVENT_RECENTRE: &str = "overlay://recentre";
+
 /// Tray menu strings, in her voice.
 ///
 /// Not `&'static str`: these are replaced at runtime once the frontend resolves
@@ -217,7 +227,9 @@ fn recentre<R: Runtime>(app: &AppHandle<R>) {
     // test can. Showing first means the item doubles as "I have lost her".
     let _ = window.show();
     if let Ok(geometry) = overlay::place_on_work_area(&window) {
-        let _ = app.emit_to(OVERLAY_LABEL, EVENT_MOVED, geometry);
+        // EVENT_RECENTRE, not EVENT_MOVED: this has to move *her*, not just the
+        // window she lives in. See the note on the constant.
+        let _ = app.emit_to(OVERLAY_LABEL, EVENT_RECENTRE, geometry);
     }
     set_toggle_label(app, true);
 }

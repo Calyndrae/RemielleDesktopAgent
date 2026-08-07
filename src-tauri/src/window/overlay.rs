@@ -171,6 +171,21 @@ pub fn recover_if_stranded<R: Runtime>(
     place_on_work_area(window).map(Some)
 }
 
+/// Applies "stay on top", including the part that only macOS needs.
+///
+/// The frontend used to call Tauri's `setAlwaysOnTop` straight from JavaScript,
+/// which sets the floating window level and stops there. That is correct for
+/// ordinary windows and wrong for fullscreen Spaces, so the setting was ticked
+/// and she still disappeared behind a fullscreen app. Routing it through here
+/// keeps the two halves of one promise together, rather than leaving the
+/// platform-specific half to be forgotten by whoever calls it next.
+#[tauri::command]
+pub fn set_overlay_on_top<R: Runtime>(window: WebviewWindow<R>, on: bool) -> Result<(), String> {
+    window.set_always_on_top(on).map_err(|e| e.to_string())?;
+    crate::platform::set_above_fullscreen(&window, on);
+    Ok(())
+}
+
 /// Brings the overlay back onto the primary display, whether or not it was
 /// stranded. The tray's manual escape hatch.
 #[tauri::command]

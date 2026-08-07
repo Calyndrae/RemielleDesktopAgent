@@ -24,6 +24,7 @@ const DEFAULT_PACK_ID = "little-remielle";
 /** Event names, mirroring the constants in `src-tauri/src/window/tray.rs`. */
 const EVENT_TRAY_SETTINGS = "tray://settings";
 const EVENT_OVERLAY_MOVED = "overlay://moved";
+const EVENT_OVERLAY_RECENTRE = "overlay://recentre";
 
 export function App() {
   const [geometry, setGeometry] = useState<OverlayGeometry | null>(null);
@@ -92,7 +93,9 @@ export function App() {
    * those call sites means none of them can forget.
    */
   useEffect(() => {
-    void getCurrentWindow().setAlwaysOnTop(alwaysOnTop);
+    void ipc.setOverlayOnTop(alwaysOnTop).catch(() => {
+      /* A window that refuses the level is still a usable window. */
+    });
   }, [alwaysOnTop]);
 
   // Moving to a display with a different DPI changes the logical size of the
@@ -121,6 +124,26 @@ export function App() {
     const unlisten = listen<OverlayGeometry>(EVENT_OVERLAY_MOVED, (event) => {
       setGeometry(event.payload);
       useSpriteStore.getState().setMonitor(event.payload.monitor);
+    });
+    return () => {
+      void unlisten.then((off) => off());
+    };
+  }, []);
+
+  /*
+   * "Come back on screen" has to move her, not just the window.
+   *
+   * Re-placing the overlay is invisible on a single display — it already covers
+   * the work area — so the item did nothing distinguishable from the toggle
+   * above it. Resetting the anchor is what the label promises: she reappears
+   * somewhere the user can point at, at a size they can hit.
+   */
+  useEffect(() => {
+    const unlisten = listen<OverlayGeometry>(EVENT_OVERLAY_RECENTRE, (event) => {
+      setGeometry(event.payload);
+      const sprite = useSpriteStore.getState();
+      sprite.setMonitor(event.payload.monitor);
+      sprite.resetPlacement();
     });
     return () => {
       void unlisten.then((off) => off());
