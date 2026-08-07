@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Layout harness — Remielle</title>
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      /* A desktop-ish backdrop, so translucency and blur read the way they
+         will over a real wallpaper. */
+      body {
+        background: linear-gradient(135deg, #1b2735 0%, #2c1d3a 55%, #402a3d 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/harness/main.tsx"></script>
+  </body>
+</html>

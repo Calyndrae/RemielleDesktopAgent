@@ -1,0 +1,377 @@
+/*
+ * Overlay styling and the design tokens for the whole app.
+ *
+ * Ground rule: nothing here may paint a background across the window. The
+ * overlay spans the whole work area, so any stray fill becomes an opaque
+ * rectangle sitting on the user's desktop.
+ */
+
+:root {
+  /*
+   * ---- Colour ----
+   *
+   * The accent is the only warm hue in the interface, and it is spent in
+   * exactly two places: the send button (the one primary action) and the agent
+   * mark (her identity). Everything else is neutral. An accent used on the
+   * title, the caret, the scrollbar and every check mark is not an accent —
+   * it is just the theme colour, and nothing stands out.
+   *
+   * The neutrals are deliberately *cool*. Pink over a violet ground is
+   * analogous — the two hues sit beside each other and the accent blends in.
+   * Cooling the ground and the text puts real temperature distance between
+   * them, so the accent reads as warm light against cold shadow. That also
+   * happens to be the right image for a character whose title is
+   * "Temporal Lumiflux".
+   */
+  --accent: #f5a8c7;
+  --accent-strong: #ffc6de;
+  /* Text drawn *on* the accent. Dark against a pale pink fill. */
+  --on-accent: #23131f;
+
+  /*
+   * Opaque, and no blur behind it.
+   *
+   * A translucent panel picks up whatever wallpaper happens to be behind it —
+   * a photograph shows through as blotches, a bright desktop washes the text
+   * out, and the same panel looks different on every machine. Frosted glass
+   * over arbitrary content is the default every AI interface reaches for and
+   * it is the reason they all look faintly grubby. This one is a solid card
+   * with a real shadow: it looks the same everywhere, and nothing it sits on
+   * can dirty it.
+   */
+  --surface: #141322;
+  --surface-raised: rgba(255, 255, 255, 0.055);
+  --surface-hover: rgba(255, 255, 255, 0.09);
+  --surface-sunken: rgba(0, 0, 0, 0.26);
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.2);
+
+  --text: #eef0f7;
+  --text-muted: #99a1b5;
+  /* Measured, not guessed: the model name renders here at 12px and has to
+     clear 4.5:1 against the surface, which the previous value did not. */
+  --text-faint: #7d849a;
+  --danger: #ff8a9b;
+  --danger-wash: rgba(255, 138, 155, 0.08);
+  --danger-edge: rgba(255, 138, 155, 0.24);
+
+  --scroll-thumb: rgba(255, 255, 255, 0.16);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.26);
+  /* The user's own message. Lifted off the surface, not tinted with the accent. */
+  --bubble: rgba(255, 255, 255, 0.08);
+  --press: rgba(255, 255, 255, 0.14);
+  /* The stop button: near-white on dark, so it reads as "different from send". */
+  --stop: #f4eef3;
+
+  /*
+   * ---- Type scale ----
+   * Four sizes, no ad-hoc values. Body sits at 14.5px because the panel is
+   * only 422px wide and CJK glyphs are square — larger eats line width fast.
+   */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-base: 14.5px;
+
+  /*
+   * ---- Radius scale ----
+   * Three tiers plus circles. A container is never rounded less than what sits
+   * inside it, or the inner shape reads as a mistake.
+   */
+  --r-container: 16px;
+  --r-surface: 14px;
+  --r-small: 8px;
+
+  /*
+   * Three layers, because the overlay sits on an unpredictable wallpaper:
+   * a contact ring that darkens whatever is directly behind the edge (a
+   * low-alpha border alone nearly vanishes against a bright background), the
+   * drop shadow proper, and a faint top highlight reading as a glass edge.
+   */
+  /*
+   * Three layers. With no blur to separate the panel from the desktop, the
+   * shadow is the only thing doing it: a contact ring that darkens whatever is
+   * directly behind the edge (a low-alpha border alone nearly vanishes against
+   * a bright background), the drop shadow proper, and a faint top highlight
+   * reading as a lit edge.
+   */
+  --shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), 0 14px 38px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --focus-ring: 0 0 0 2px rgba(245, 168, 199, 0.6);
+  --accent-wash: rgba(245, 168, 199, 0.14);
+  --accent-edge: rgba(245, 168, 199, 0.3);
+  --accent-edge-soft: rgba(245, 168, 199, 0.45);
+
+  /*
+   * Noto Serif SC, vendored rather than linked: the app has to render correctly
+   * with no network, and the webview CSP blocks external hosts anyway. It ships
+   * as ~100 unicode-range subsets, so a conversation only loads the ranges it
+   * actually touches.
+   */
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
+  font-size: var(--fs-base);
+  color: var(--text);
+}
+
+/*
+ * ---- Light ----
+ *
+ * Not the dark palette inverted. Three things genuinely change character rather
+ * than value, and getting them wrong is what makes a light mode look like a bug:
+ *
+ * 1. **The accent has to get darker, not lighter.** `#f5a8c7` is a pale pink
+ *    that reads as warm light against a dark ground; on a white surface it is
+ *    nearly invisible, and the agent mark at 65% opacity would disappear
+ *    entirely. Light mode uses a deep rose at the same hue, and flips the text
+ *    drawn on it from near-black to white.
+ * 2. **Every lift becomes a recess.** `--surface-raised` and `--surface-hover`
+ *    are white-alpha on dark; on light they have to be *black*-alpha, because
+ *    "raised" is signalled by contrast with the surface, not by being paler.
+ * 3. **The shadow is tinted, not black.** A neutral drop shadow on a light
+ *    panel over a colourful wallpaper reads as dirt. This one carries the same
+ *    violet as the dark theme's ground.
+ *
+ * The surface stays translucent and keeps its blur: the panel floats over an
+ * arbitrary desktop in both themes, and that is what keeps it legible over a
+ * photograph either way.
+ */
+:root[data-theme="light"] {
+  --accent: #c2416f;
+  --accent-strong: #a8305c;
+  --on-accent: #fff5f9;
+
+  --surface: #faf8fc;
+  --surface-raised: rgba(24, 16, 32, 0.045);
+  --surface-hover: rgba(24, 16, 32, 0.075);
+  --surface-sunken: rgba(24, 16, 32, 0.05);
+  --border: rgba(24, 16, 32, 0.13);
+  --border-strong: rgba(24, 16, 32, 0.24);
+
+  --text: #1c1722;
+  --text-muted: #5d5769;
+  --text-faint: #6b6577;
+  --danger: #b3213c;
+  --danger-wash: rgba(179, 33, 60, 0.07);
+  --danger-edge: rgba(179, 33, 60, 0.22);
+
+  --scroll-thumb: rgba(24, 16, 32, 0.2);
+  --scroll-thumb-hover: rgba(24, 16, 32, 0.32);
+  --bubble: rgba(24, 16, 32, 0.06);
+  --press: rgba(24, 16, 32, 0.11);
+  --stop: #2b2434;
+
+  /* Tinted with the same violet rather than neutral grey: a black drop shadow
+     under a light panel over a colourful desktop reads as grime. */
+  --shadow: 0 0 0 1px rgba(58, 40, 74, 0.16), 0 14px 38px rgba(48, 32, 62, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  --focus-ring: 0 0 0 2px rgba(194, 65, 111, 0.55);
+  --accent-wash: rgba(194, 65, 111, 0.1);
+  --accent-edge: rgba(194, 65, 111, 0.32);
+  --accent-edge-soft: rgba(194, 65, 111, 0.45);
+}
+
+/* Keyboard focus must be visible on every interactive element. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- sprite ---------- */
+
+.sprite {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Above the chat panel (z-index 5). The close flight has to disappear
+     *behind* the character, which only works if she outranks it. */
+  z-index: 10;
+  /* Positioned entirely through `transform` from the animation loop, so it
+     never triggers layout. */
+  will-change: transform;
+  touch-action: none;
+  cursor: grab;
+}
+
+.sprite:active {
+  cursor: grabbing;
+}
+
+/*
+ * Dozing.
+ *
+ * No pack is required to ship sleeping frames — `sleep` falls back to `idle` —
+ * so the state has to read as asleep from treatment alone: dimmed, desaturated,
+ * settled a little lower. Any interaction wakes her, and the transition back is
+ * quicker than the one into it, because waking should feel like a start and
+ * falling asleep should not.
+ */
+.sprite--asleep {
+  filter: brightness(0.62) saturate(0.55);
+  transition: filter 1400ms ease;
+}
+
+.sprite--asleep .sprite__image {
+  transform: translateY(3px) scale(0.985);
+  transition: transform 1400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sprite:not(.sprite--asleep) {
+  transition: filter 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sprite--asleep,
+  .sprite--asleep .sprite__image,
+  .sprite:not(.sprite--asleep) {
+    transition: none;
+  }
+}
+
+.sprite__image {
+  /*
+   * Centred on the box rather than filling it, and sized in JS to the frame's
+   * own pixels. `object-fit: contain` would scale every animation by a
+   * different factor, because the frames are not all the same size.
+   */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  /* Smooth scaling on purpose. The source GIFs have 1-bit alpha, so their edges
+     are already hard; interpolating softens them slightly, whereas
+     nearest-neighbour would preserve every jagged step. */
+  image-rendering: auto;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* ---------- context menu ---------- */
+
+.menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20; /* over both the sprite and the panel */
+  min-width: 152px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-surface);
+  box-shadow: var(--shadow);
+  /* See the note on `.panel` — never inherit text colour through the document. */
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.menu__item:hover:not(:disabled),
+.menu__item:focus-visible {
+  background: var(--surface-hover);
+  outline: none;
+}
+
+/* Listed but not offered — e.g. "export" before there is anything to export.
+   Keeping the entry visible is how you learn the action exists at all. */
+.menu__item:disabled {
+  color: var(--text-faint);
+}
+
+.menu__item--danger {
+  color: var(--danger);
+}
+
+/* Sized as a box for an SVG rather than a text glyph, so the tick sits exactly
+   on the label's optical centre in every font fallback. */
+.menu__check {
+  flex: 0 0 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+
+.menu__label {
+  /* Without this a long label in a flex row refuses to shrink and blows the
+     menu out past its container. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- fault panel ---------- */
+
+.fault {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  max-width: min(420px, calc(100vw - 48px));
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+
+.fault__title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.fault__body {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.fault__detail {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  max-height: 140px;
+  background: var(--surface-sunken);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: "Cascadia Mono", "Consolas", "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  /* Long paths must scroll inside the box rather than widen it. */
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fault__retry {
+  padding: 6px 14px;
+  background: var(--accent);
+  border: 0;
+  border-radius: 6px;
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: default;
+}
+
+.fault__retry:hover {
+  background: var(--accent-strong);
+}

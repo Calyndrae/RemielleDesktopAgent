@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remielle</title>
+    <style>
+      /*
+       * The overlay window is transparent and covers the monitor work area.
+       * Anything that paints a background here would show up as an opaque
+       * rectangle on the user's desktop, so every layer stays see-through and
+       * only the sprite / panels draw pixels.
+       */
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+      }
+      body {
+        /* Nothing in the overlay should be text-selectable or show a caret. */
+        user-select: none;
+        -webkit-user-select: none;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/overlay/main.tsx"></script>
+  </body>
+</html>

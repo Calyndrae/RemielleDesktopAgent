@@ -1,0 +1,128 @@
+# Builds the installers.
+#
+# This exists because neither installer can be produced on the machine the
+# project is developed on. Tauri bundles against the host's own webview and
+# packager, so a Windows `.exe` needs Windows and a macOS `.app` needs macOS —
+# there is no cross-compile. A Mac can build half of what ships; this workflow
+# builds the other half, and both halves the same way every time.
+#
+# Run it from the Actions tab (Run workflow), or push a `v*` tag. Artifacts
+# land under the run, one per platform, and stay for 30 days.
+#
+# Nothing here is signed. On Windows SmartScreen will warn on first run, and on
+# macOS Gatekeeper will refuse until the user right-click → Opens once, or runs
+# `xattr -dr com.apple.quarantine`. Signing needs paid certificates; see §9 of
+# HANDOFF.md, it is the user's call.
+
+name: Build installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+# Two identical builds racing on the same tag would upload two artifacts with
+# the same name and one would lose.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Windows failing must not cancel a macOS build that was going to succeed.
+      # The whole point is to get whichever artifacts we can.
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows (x64)
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: remielle-windows-x64
+
+          # macOS is split by architecture rather than built as one universal
+          # binary. A universal build that fails leaves you with nothing; two
+          # separate ones mean an Apple Silicon failure still ships the Intel
+          # build and vice versa. If you would rather have the single universal
+          # `.app`, replace both entries with one using
+          # `--target universal-apple-darwin`.
+          - label: macOS (Apple Silicon)
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: remielle-macos-aarch64
+
+          - label: macOS (Intel)
+            os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: remielle-macos-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Keyed on the target, because the build directory holds objects for one
+      # architecture and mixing two of them wastes the cache rather than filling
+      # it.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `icon.icns` is deliberately not checked in — see HANDOFF.md §2. It is
+      # generated from the same source PNG as every other icon, so committing it
+      # would be committing a build output. Generating it here also regenerates
+      # the Windows `.ico`, which is harmless and keeps the two in step.
+      - name: Generate platform icons
+        run: pnpm tauri icon src-tauri/icons/icon.png
+
+      - name: Build
+        run: pnpm tauri build --target ${{ matrix.target }}
+
+      # Only the things a person would actually download. The bundle directory
+      # also holds the unpacked `.app`, intermediate NSIS scripts and the raw
+      # executable; uploading all of it makes the artifact several times larger
+      # for no gain, and the `.dmg` already contains the `.app`.
+      - name: Collect installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=artifacts
+          mkdir -p "$out"
+          bundle="src-tauri/target/${{ matrix.target }}/release/bundle"
+
+          # -print -quit on the first hit would hide a second bundle appearing,
+          # so copy everything that matches and count afterwards.
+          find "$bundle" \
+            \( -name '*.exe' -o -name '*.msi' -o -name '*.dmg' \) \
+            -type f -exec cp {} "$out"/ \;
+
+          if [ -z "$(ls -A "$out")" ]; then
+            echo "::error::the build produced no installer under $bundle"
+            find "$bundle" -maxdepth 2 || true
+            exit 1
+          fi
+          ls -lh "$out"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30

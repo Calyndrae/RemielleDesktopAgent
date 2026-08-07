@@ -1,0 +1,86 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Remielle Desktop Agent",
+  "version": "0.1.0",
+  "identifier": "com.calyndrae.remielle-desktop-agent",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "overlay",
+        "title": "Remielle",
+        "url": "index.html",
+        "width": 800,
+        "height": 600,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "focus": false,
+        "visible": false,
+        "acceptFirstMouse": true
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "media-src": "'self' asset: http://asset.localhost blob:",
+        "style-src": "'self' 'unsafe-inline'",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$RESOURCE/packs/**",
+          "$APPDATA/packs/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../assets/packs": "packs",
+      "../assets/persona": "persona"
+    },
+    "shortDescription": "Remielle desktop companion",
+    "longDescription": "A floating desktop companion featuring Remielle Dan, with an LLM-backed chat panel. Non-commercial fan project.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}

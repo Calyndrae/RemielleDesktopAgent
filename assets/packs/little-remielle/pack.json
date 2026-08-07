@@ -1,0 +1,110 @@
+{
+  "id": "little-remielle",
+  "name": "Little Remielle",
+  "license": "CC BY-NC-SA 4.0",
+  "credits": [
+    "角色与原始素材 © HoYoverse《绝区零》 / Character and source material © HoYoverse (Zenless Zone Zero)",
+    "动画制作 / Animation: 森哈_Yeah (bilibili)",
+    "桌宠素材整理 / Desktop pet asset pack: ZanyZebra1127 — https://github.com/ZanyZebra1127/Little-Remielle"
+  ],
+  "frameSize": {
+    "width": 302,
+    "height": 298
+  },
+  "animations": [
+    {
+      "id": "idle",
+      "label": {
+        "zh-CN": "待机",
+        "en": "Idle"
+      },
+      "file": "待机.gif",
+      "offset": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "pen_idle",
+      "label": {
+        "zh-CN": "拿笔待机",
+        "en": "Pen Idle"
+      },
+      "file": "拿笔待机.gif",
+      "offset": {
+        "x": 0,
+        "y": -5
+      }
+    },
+    {
+      "id": "thinking",
+      "label": {
+        "zh-CN": "思考",
+        "en": "Thinking"
+      },
+      "file": "思考.gif",
+      "offset": {
+        "x": 0,
+        "y": -3
+      }
+    },
+    {
+      "id": "writing_continuous",
+      "label": {
+        "zh-CN": "连续绘制",
+        "en": "Drawing"
+      },
+      "file": "连续绘制.gif",
+      "offset": {
+        "x": -39,
+        "y": 4
+      }
+    },
+    {
+      "id": "writing_intermittent",
+      "label": {
+        "zh-CN": "间歇绘制",
+        "en": "Drawing (Paused)"
+      },
+      "file": "间歇绘制.gif",
+      "offset": {
+        "x": -45,
+        "y": -10
+      }
+    },
+    {
+      "id": "expect",
+      "label": {
+        "zh-CN": "期待",
+        "en": "Anticipation"
+      },
+      "file": "期待.gif",
+      "offset": {
+        "x": 0,
+        "y": -5
+      }
+    },
+    {
+      "id": "pleased",
+      "label": {
+        "zh-CN": "得意",
+        "en": "Pleased"
+      },
+      "file": "得意.gif",
+      "offset": {
+        "x": 15,
+        "y": 0
+      }
+    }
+  ],
+  "states": {
+    "idle": "idle",
+    "penIdle": "pen_idle",
+    "thinking": "thinking",
+    "writing": "writing_continuous",
+    "writingPaused": "writing_intermittent",
+    "expect": "expect",
+    "pleased": "pleased",
+    "confused": "expect"
+  }
+}

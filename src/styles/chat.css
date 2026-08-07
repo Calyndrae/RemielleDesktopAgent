@@ -1,0 +1,1232 @@
+/*
+ * Chat panel.
+ *
+ * Two rules run through this file.
+ *
+ * Layout: every flex child that contains text gets `min-width: 0` (or
+ * `min-height: 0` in a column), and every text surface gets
+ * `overflow-wrap: anywhere`. Flex items default to `min-width: auto` and refuse
+ * to shrink below their content — that single default is what a long URL or an
+ * unbroken identifier exploits to burst a panel.
+ *
+ * Icon alignment: icons are SVGs centred with `display: grid; place-items:
+ * center` and `display: block` on the SVG itself. Text glyphs ("+", "✕", "✓")
+ * sit on a baseline with per-family side bearings, so they land off-centre in a
+ * round button and shift again whenever the font stack resolves differently.
+ */
+
+.panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5; /* below the sprite, so the close flight vanishes behind her */
+
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  /* Lets the composer respond to the panel's own width rather than the
+     monitor's — the panel is 320-420px wide inside a 1080p viewport, so a media
+     query would answer the wrong question. */
+  container: panel / inline-size;
+
+  background: var(--surface);
+  border: 1px solid var(--border);
+  /*
+   * Set, not inherited. The panel and the menus are self-contained surfaces
+   * that can be portalled anywhere in the document — and a host page that sets
+   * `body { color: … }` would otherwise reach straight into them. That is not
+   * hypothetical: it turned every context-menu label near-black on the dark
+   * menu surface, while the tick beside it stayed bright because that one rule
+   * did set its own colour.
+   */
+  color: var(--text);
+  /* Outer tier of the radius scale (8 / 15 / 16). The panel must never be
+     rounded less than the bubbles inside it — an inner shape with a larger
+     radius than its container reads as a mistake. */
+  border-radius: var(--r-container);
+  box-shadow: var(--shadow);
+
+  transform-origin: 50% 50%;
+  will-change: transform, filter, opacity;
+}
+
+.panel--opening {
+  animation-name: panel-in;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+}
+
+/* ---------- header ---------- */
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  /* Asymmetric on purpose: the title starts 16px from the left edge, and the
+     close button carries ~5px of its own padding around a 15px glyph, so 10px
+     here puts the glyph's optical edge at the same 16px inset. */
+  padding: 10px 10px 10px 16px;
+}
+
+.panel__title {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  /* CJK glyphs are taller than the Latin box; without this the title feels
+     cramped in a 42px header. */
+  line-height: 1.3;
+  /*
+   * Quiet on purpose. The title was the brightest, most saturated thing in the
+   * panel while being the least useful — the character is standing right next
+   * to it; you already know who you are talking to.
+   */
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Running session cost, in the header where it is always in view. */
+.panel__tokens {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- shared controls ---------- */
+
+/*
+ * Secondary controls. No fill at rest — only the send button carries a filled
+ * background, so it is unambiguously the primary action in the row.
+ */
+.iconbtn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.iconbtn svg,
+.sendbtn svg,
+.actions__btn svg,
+.menu__check svg {
+  display: block;
+}
+
+.iconbtn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* Held down for as long as the menu it opened is on screen. */
+.iconbtn--open {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.iconbtn--ghost {
+  width: 26px;
+  height: 26px;
+  background: none;
+  color: var(--text-muted);
+}
+
+.iconbtn--ghost:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.sendbtn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  border: 0;
+  border-radius: 50%;
+  color: var(--on-accent);
+  cursor: default;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.sendbtn:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+/*
+ * Nothing to send yet.
+ *
+ * No disc at all, rather than a grey one. Its greyed fill used to be
+ * `rgba(255,255,255,.09)` — the exact value `.searchtoggle--on` uses — so an
+ * empty composer with search enabled drew two identical grey circles at either
+ * end of the row, which is the twinning this whole row was rearranged to avoid.
+ *
+ * It also reads better: the button *arrives* when you have typed something,
+ * which is the clearest possible signal that there is now something to send.
+ */
+.sendbtn:disabled {
+  background: none;
+  color: var(--text-faint);
+}
+
+.sendbtn--stop {
+  background: var(--stop);
+  color: var(--surface);
+}
+
+/* ---------- scroll area ---------- */
+
+.panel__scroll {
+  flex: 1 1 auto;
+  /* Without this the scroll area refuses to shrink and pushes the composer off
+     the bottom of the panel. */
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  /* Symmetric with the top: scrolled content used to butt straight against the
+     composer with 6px of clearance, which read as clipped rather than scrolled. */
+  padding: 16px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  /*
+   * Deliberately no `gap`. A single gap value applies equally to every pair of
+   * siblings, and the rhythm here is asymmetric: the break between exchanges
+   * has to be larger than the one between a question and its answer. Adjacent
+   * sibling margins below express that; gap cannot.
+   */
+  gap: 0;
+
+  /*
+   * Fade the content out at both ends.
+   *
+   * Without it a scrolled transcript is sliced flat against the header rule and
+   * against the composer — a half-height row of glyphs with a hard edge through
+   * it, which reads as a clipping bug rather than as "there is more above".
+   * The mask is on the scroll container, so it stays put while the content
+   * moves under it.
+   *
+   * `transparent` at the very edge would eat the first and last lines when the
+   * transcript is short enough not to scroll, so the stops start opaque and the
+   * fade only covers the 14px next to each rule.
+   */
+  --edge-fade: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 14px,
+    #000 calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: var(--edge-fade);
+  -webkit-mask-image: var(--edge-fade);
+}
+
+/* Nothing to fade when everything fits; the mask would only dim the first and
+   last lines of a short conversation. */
+.panel__scroll:not(.panel__scroll--scrollable) {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.panel__scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel__scroll::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+}
+
+.panel__scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+/* ---------- messages ---------- */
+
+/*
+ * Turn spacing scale: 6 / 10 / 14 / 18 / 24.
+ * The largest break marks a new exchange; the smallest separates the parts of
+ * a single assistant turn.
+ */
+.msg {
+  display: flex;
+  min-width: 0;
+}
+
+.msg + .msg {
+  margin-top: 18px;
+}
+
+/* A question and the answer directly under it belong together. */
+.msg--user + .msg--assistant {
+  margin-top: 14px;
+}
+
+/* A new question starts a new exchange — the biggest break in the transcript. */
+.msg--assistant + .msg--user {
+  margin-top: 24px;
+}
+
+.msg:first-child {
+  margin-top: 0;
+}
+
+.msg--user {
+  justify-content: flex-end;
+}
+
+.msg--assistant {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.msg__bubble {
+  max-width: 78%;
+  min-width: 0;
+  /* Roomier than it looks like it needs: at 15px radius a tighter bubble leaves
+     almost no flat edge on a single line, and reads as an over-rounded pill. */
+  padding: 10px 14px;
+  background: var(--bubble);
+  border-radius: var(--r-surface);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.prose {
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--fs-base);
+  /* Looser than the user bubble (1.6) on purpose: bubbles are a line or two,
+     this is long-form reading, and the text is mixed CJK/Latin which wants more
+     leading than a Latin-tuned ratio gives. */
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.prose--streaming {
+  white-space: pre-wrap;
+}
+
+.prose--muted {
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+}
+
+.para {
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.para:last-child {
+  margin-bottom: 0;
+}
+
+/*
+ * Streamed chunks fade in from blurred to sharp.
+ *
+ * The keyframe has no `to`: it animates toward the element's own computed
+ * style, and with no fill mode the filter is gone once it finishes rather than
+ * leaving hundreds of permanent compositing layers in a long reply.
+ */
+.chunk {
+  animation: chunk-in 0.08s ease-out;
+}
+
+@keyframes chunk-in {
+  from {
+    filter: blur(6px);
+    opacity: 0.35;
+  }
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  /* Neutral, not the accent: this is a text cursor, and spending the accent
+     here would put a second warm point of interest next to the mark. */
+  background: var(--text-muted);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.code {
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  /* Long lines scroll inside the block instead of widening the panel. */
+  overflow-x: auto;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.code code {
+  white-space: pre;
+}
+
+/* ---------- provenance strip ---------- */
+
+/*
+ * What happened before the answer: searches run, thinking done.
+ *
+ * One line carrying both, because they are the same *kind* of thing. Two
+ * separate rows of identical shape, four pixels apart, read as a duplicated
+ * widget rather than as two facts.
+ */
+.meta {
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 8px;
+}
+
+.meta__strip {
+  display: flex;
+  align-items: center;
+  /* No separator glyph between the tabs. A middle dot here would be the third
+     kind of divider in a 40px-tall region. */
+  gap: 14px;
+  min-width: 0;
+}
+
+.meta__tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  text-align: left;
+  cursor: default;
+  transition: color 120ms ease;
+}
+
+.meta__tab:hover:not(:disabled),
+.meta__tab--open {
+  color: var(--text);
+}
+
+.meta__tab:disabled {
+  opacity: 0.75;
+}
+
+.meta__tab--pulsing {
+  animation: meta-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes meta-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.meta__icon {
+  flex: 0 0 auto;
+}
+
+.meta__label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta__count {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  background: var(--surface-raised);
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The expanded chain-of-thought.
+ *
+ * A filled, rounded, inset card — which is what this was — gives the least
+ * important content in the turn more chrome than the answer above it, and
+ * floats a hard-edged box inside otherwise borderless text. A single hairline
+ * rule says "aside" without competing.
+ */
+.meta__body {
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  line-height: 1.68;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- sources ---------- */
+
+.sources {
+  margin: 8px 0 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--border);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sources__link {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: color 120ms ease;
+}
+
+.sources__title {
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  /* Underlining every source turns the list into a wall of rules. The hostname
+     underneath is what marks these as links out of the app. */
+  overflow-wrap: anywhere;
+}
+
+.sources__host {
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.sources__link:hover .sources__title {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- failed turn ---------- */
+
+.turn-error {
+  align-self: stretch;
+  padding: 11px 13px;
+  background: var(--danger-wash);
+  border: 1px solid var(--danger-edge);
+  border-radius: var(--r-small);
+}
+
+.turn-error__title {
+  margin: 0 0 3px;
+  color: var(--danger);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.turn-error__hint {
+  margin: 0 0 9px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.turn-error__retry {
+  padding: 5px 12px;
+  background: var(--surface-hover);
+  border: 0;
+  border-radius: var(--r-small);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: default;
+}
+
+.turn-error__retry:hover {
+  background: var(--press);
+}
+
+/* ---------- action row ---------- */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px; /* tight cluster */
+  /* Pull the row's own button padding back so its icons align optically with
+     the text column's left edge. */
+  margin-left: -5px;
+}
+
+.actions__btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  /* No chrome at rest — unlike the composer's controls, this row is secondary
+     and should recede until reached for. */
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-muted);
+  opacity: 0.6;
+  cursor: default;
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.actions__btn:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.actions__btn:disabled {
+  opacity: 0.28;
+}
+
+.actions__btn--active {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* Per-reply cost, so it is attributable rather than only a session total. */
+.actions__tokens {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions__time {
+  /* Separates the metadata from the interactive cluster. */
+  margin-left: 10px;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- turn footer ---------- */
+
+/*
+ * The action row and the mark share one line, so a completed turn ends with a
+ * single band of metadata instead of a controls row followed by a lone glyph
+ * hanging in empty space.
+ */
+.turnfoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: stretch;
+  min-width: 0;
+  margin-top: 12px;
+}
+
+.turnfoot .actions {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/*
+ * Older turns keep their controls but stop advertising them.
+ *
+ * Six identical icon rows stacked down a 420px transcript is a column of
+ * chrome running beside the conversation, and only the newest one is ever the
+ * answer you are reacting to. The rest are still there — point at the message
+ * and they appear, exactly where they always were.
+ *
+ * Held in the layout rather than removed from it, so nothing shifts when they
+ * surface. `pointer-events` is what actually makes them unclickable while
+ * invisible; it does not affect the keyboard, so Tab still reaches them and
+ * `:focus-within` brings them into view for anyone not using a mouse.
+ */
+.turnfoot--quiet .actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 130ms ease;
+}
+
+.msg--assistant:hover .turnfoot--quiet .actions,
+.turnfoot--quiet:focus-within .actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ---------- agent mark ---------- */
+
+.mark {
+  flex: 0 0 auto;
+  /*
+   * Deliberately below the emphasis of both --text and --pink-bright: the mark
+   * is present but decorative, and at full strength it would compete with the
+   * panel title for "brightest thing on screen".
+   */
+  color: var(--accent);
+  opacity: 0.65;
+  /* Displaced by a FLIP transition when the action row appears beside it. */
+  will-change: transform;
+}
+
+/* ---------- empty state ---------- */
+
+.empty {
+  /* Centred in the available space rather than pinned to the top, so an empty
+     panel reads as composed instead of unfinished. */
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 12px 20px;
+  text-align: center;
+}
+
+.empty__mark {
+  color: var(--accent);
+  opacity: 0.62;
+  margin-bottom: 14px;
+}
+
+.empty__greeting {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.empty__sub {
+  margin: 0 0 20px;
+  /*
+   * `em`, not `ch`. The `ch` unit measures the advance of "0", which in a
+   * serif face is about half the width of a Han glyph — so a `34ch` cap held
+   * roughly seventeen Chinese characters and broke a twenty-one character
+   * sentence across two lines, orphaning a single glyph on the second. One
+   * `em` is one Han glyph, which is the thing actually being counted.
+   */
+  max-width: 24em;
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  color: var(--text-muted);
+  text-wrap: balance;
+}
+
+.empty__openers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  max-width: 100%;
+}
+
+/*
+ * Openers fill the composer rather than sending on their own — the user keeps
+ * the decision about what actually gets said.
+ */
+.opener {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.opener:hover {
+  background: var(--surface-hover);
+  border-color: transparent;
+  color: var(--text);
+}
+
+/*
+ * Picking the previous conversation back up.
+ *
+ * First in the row and wider than the prompts beside it, because it is the one
+ * chip that does something rather than typing something.
+ */
+.opener--resume {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.opener--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+  font-weight: 500;
+}
+
+.opener--primary:hover {
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+
+/* ---------- web search toggle ---------- */
+
+/*
+ * State is carried by fill, not just colour: "is search on right now?" has to
+ * be answerable at a glance, and an off state that only differs in hue reads as
+ * ambiguous.
+ */
+.searchtoggle {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  /*
+   * A 30px circular footprint matching "+" and send, but — crucially — no
+   * chrome at rest.
+   *
+   * Two things fought here. It was the only *action* in the row wearing the
+   * 26px "quiet metadata" height, so the row had a 30/26/26/30 wobble instead
+   * of a scale; and as a 63px labelled pill it left the model name 115px for a
+   * 137px string, which is what pushed "deepseek-reasoner" into an ellipsis
+   * butted against its own chevron.
+   *
+   * Sizing it to 30px fixed both and introduced a third problem: with a border
+   * at rest it became the send button's twin, and two identical shapes separated
+   * by the whole spacer read as a pair that had been pulled apart — similarity
+   * grouping them, position denying it. Dropping the resting border is what
+   * settles it. Now "+", the model and this are three bare marks forming the
+   * left cluster, and the send button is the only thing in the row carrying a
+   * fill at rest, which is exactly the hierarchy it should have.
+   */
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.searchtoggle:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/*
+ * On.
+ *
+ * Three signals, not one: the glyph loses its slash, the disc fills, and the
+ * icon brightens. Fill alone was not enough once the label was gone — at 30px
+ * a filled disc and an outline ring are close to indistinguishable, and "is
+ * search on right now?" is the single question this control exists to answer.
+ */
+.searchtoggle--on {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ---------- tool runs ---------- */
+
+/*
+ * Things she did to the machine. Always visible, never behind a toggle:
+ * a web search is context, but a changed setting is a consequence, and finding
+ * out about it only by expanding a row is the failure this exists to prevent.
+ */
+.runs {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.run {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+/* A mark, not a bullet: it carries the outcome, which a bullet cannot. */
+.run__dot {
+  flex: 0 0 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  transform: translateY(-2px);
+}
+
+.run__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.run--refused {
+  color: var(--danger);
+}
+
+.run--pending .run__dot {
+  animation: run-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes run-pulse {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+/* ---------- confirmation ---------- */
+
+/*
+ * Sits inside the panel, above the composer, rather than in a native dialog.
+ * A modal box over the desktop with no surrounding context is how people learn
+ * to approve without reading, and this tier exists precisely to be read.
+ */
+.confirm {
+  flex: 0 0 auto;
+  margin: 0 16px 8px;
+  padding: 12px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--accent-edge);
+  border-radius: var(--r-surface);
+}
+
+.confirm__title {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.confirm__detail {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.confirm__row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.confirm__btn {
+  padding: 6px 14px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: default;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.confirm__btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/*
+ * "Go" is the quieter of the two, which is deliberate and the opposite of the
+ * usual arrangement. Nothing here is the happy path — the tier exists because
+ * the answer might reasonably be no, and the default focus is on "不用".
+ */
+.confirm__btn--go {
+  border-color: var(--accent-edge);
+  color: var(--text);
+}
+
+.confirm__btn--go:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- composer ---------- */
+
+.composer-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  /* 16px matches `.panel__scroll`'s padding, so the composer and the message
+     column share one left/right edge. */
+  padding: 6px 16px 12px;
+}
+
+/*
+ * Confirmation for actions whose result leaves the app.
+ *
+ * "Copied to clipboard" has to be said somewhere: the effect is invisible from
+ * inside the window, and silence after a click is indistinguishable from the
+ * click not having registered.
+ */
+.toast {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% - 2px);
+  z-index: 2;
+  margin: 0;
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  text-align: center;
+  animation: toast-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.composer {
+  /* Extra top padding is where the placeholder's airiness comes from; growing
+     the font instead would eat line width, and CJK glyphs are already wide at
+     a 422px panel. */
+  padding: 12px 12px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-surface);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.composer:focus-within {
+  border-color: var(--accent-edge-soft);
+  background: var(--surface-raised);
+}
+
+/*
+ * Code blocks need a floor darker than the surface on dark, and one *lighter*
+ * than nothing on light — `--surface-sunken` flips sense between the themes,
+ * which is exactly what "recessed" has to mean in each.
+ */
+
+.composer__input {
+  display: block;
+  width: 100%;
+  min-height: 22px;
+  max-height: 132px;
+  /*
+   * No left padding. It used to carry 3px, which did not cancel the 6.5px the
+   * "+" glyph is inset by its own 30px round hit box — so the typed text and
+   * the icon under it sat 3.5px apart on a vertical read down the card's left
+   * margin. Both edges are pulled to the same plane instead; the same trick
+   * `.actions` already uses against the message column.
+   */
+  padding: 0 0 9px;
+  background: none;
+  border: 0;
+  resize: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  overflow-y: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/*
+ * No ring of its own.
+ *
+ * The global `:focus-visible` rule paints a 2px accent ring on every
+ * interactive element, which is right everywhere except here: `.composer`
+ * already draws an accent border on `:focus-within`, so focusing the textarea
+ * produced a rounded accent box nested inside a rounded accent box, one inset
+ * from the other. The outer border is the affordance; this element only has to
+ * not add a second one.
+ */
+.composer__input:focus,
+.composer__input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.composer__input::placeholder {
+  color: var(--text-muted);
+}
+
+.composer__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Cancels (30px box − 17px glyph) / 2 so the "+" lines up with the text above. */
+.composer__row .iconbtn:first-child {
+  margin-left: -6.5px;
+}
+
+.composer__spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.composer__counter {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer__counter--limit {
+  color: var(--danger);
+}
+
+/*
+ * The model selector is metadata, not an action.
+ *
+ * It used to be a filled chip at 600 weight, which put it in the same visual
+ * weight class as the send button and made it louder than the thing the user is
+ * actually doing — typing. Stripped to bare text: present, legible, and clearly
+ * subordinate to both the input above it and the send button beside it.
+ */
+.modelpill {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 6px;
+  background: none;
+  border: 0;
+  border-radius: var(--r-small);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: default;
+  overflow: hidden;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.modelpill:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.modelpill__name,
+.modelpill__variant {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Shrink order, and it matters.
+ *
+ * The variant used to be `flex: 0 0 auto` while the provider name took the
+ * default `0 1 auto`, so the *name* absorbed the whole squeeze: "DeepSeek"
+ * collapsed to "Dee…" and then "D…" while the model id stayed at full width,
+ * and once the row ran out entirely the un-shrinkable variant was clipped by
+ * `overflow: hidden` — losing its ellipsis and the caret with it.
+ *
+ * Now the model id gives way first (it has one to spare: "deepseek-reason…"
+ * still identifies it), the provider name only after that, and the caret never,
+ * so the control always looks like a control.
+ */
+.modelpill__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.modelpill__variant {
+  /* Higher shrink factor: this is the first thing to give. */
+  flex: 0 6 auto;
+  min-width: 0;
+  color: var(--text-faint);
+}
+
+.modelpill__caret {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+}
+
+/*
+ * Below ~360px the row cannot hold provider, model, search toggle and send at
+ * once. The provider is the redundant half — the model id names it — so it goes
+ * rather than letting both halves be shaved to initials.
+ */
+@container panel (max-width: 360px) {
+  .modelpill__name {
+    display: none;
+  }
+}
+
+/*
+ * The fallibility note, at the bottom of the empty state.
+ *
+ * Fainter and further away than anything else on the screen: it has to be
+ * present and readable, but it is not what you came here to read.
+ */
+.empty__note {
+  margin: 26px 0 0;
+  max-width: 26em;
+  color: var(--text-faint);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chunk,
+  .caret,
+  .panel--opening,
+  .meta__tab--pulsing {
+    animation: none;
+  }
+
+  .turnfoot--quiet .actions {
+    transition: none;
+  }
+}

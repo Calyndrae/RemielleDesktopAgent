@@ -1,0 +1,79 @@
+[package]
+name = "remielle-desktop-agent"
+version = "0.1.0"
+description = "Remielle desktop companion agent"
+authors = ["Calyndrae"]
+edition = "2021"
+rust-version = "1.77.2"
+license = "MIT"
+
+[lib]
+# Tauri v2 builds the app as a library so mobile targets can link it.
+name = "remielle_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [
+  "tray-icon",
+  "image-png",
+  # Required by `assetProtocol` in tauri.conf.json — the sprite's animation
+  # files are loaded from the resource/app-data dirs via `asset:` URLs.
+  "protocol-asset",
+  # Required by `macOSPrivateApi` in tauri.conf.json — window transparency on
+  # macOS. No effect on Windows.
+  "macos-private-api",
+] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-store = "2"
+tauri-plugin-os = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+log = "0.4"
+sys-locale = "0.3"
+
+# rustls rather than the platform TLS stack: one less thing that behaves
+# differently between the Windows target and Linux CI.
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "stream",
+  "rustls-tls",
+] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", features = ["sync", "time"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Graphics_Gdi",
+] }
+# Windows Credential Manager, backed by DPAPI: the secret is bound to the
+# user's Windows account and cannot be read from another account or machine.
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[features]
+# This feature is used for production builds where `devUrl` points to the
+# filesystem rather than a dev server.
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

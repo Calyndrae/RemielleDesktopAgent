@@ -1,0 +1,118 @@
+/* Demo-only chrome: the stand-in character and the on-screen hint. */
+
+body {
+  /* A desktop-ish backdrop, so the panel's translucency and blur read the way
+     they will over a real wallpaper. */
+  background:
+    radial-gradient(1200px 700px at 18% 12%, #2f3a55 0%, transparent 60%),
+    radial-gradient(900px 600px at 82% 78%, #4a2b46 0%, transparent 62%),
+    linear-gradient(150deg, #12131f 0%, #1d1626 55%, #241a2c 100%);
+  overflow: hidden;
+}
+
+.figure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10; /* above the panel, so the close flight vanishes behind her */
+  will-change: transform;
+  touch-action: none;
+  cursor: grab;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.5));
+}
+
+.figure:active {
+  cursor: grabbing;
+}
+
+.figure__head,
+.figure__body {
+  position: absolute;
+  left: 50%;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #f8cbdf, #cf98cf 55%, #9a6fb4);
+  transition: background 400ms ease;
+}
+
+.figure__head {
+  top: 16px;
+  width: 108px;
+  height: 116px;
+  margin-left: -54px;
+}
+
+.figure__body {
+  top: 116px;
+  width: 150px;
+  height: 148px;
+  margin-left: -75px;
+  border-radius: 50% 50% 46% 46%;
+}
+
+/* State is legible at a glance, standing in for the animation swap. */
+.figure--thinking .figure__head,
+.figure--thinking .figure__body {
+  background: linear-gradient(160deg, #bcd4f7, #8fa8dd 55%, #6274ad);
+}
+
+.figure--writing .figure__head,
+.figure--writing .figure__body {
+  background: linear-gradient(160deg, #ffd9b0, #f0b183 55%, #c88359);
+}
+
+.figure--pleased .figure__head,
+.figure--pleased .figure__body {
+  background: linear-gradient(160deg, #ffc9dc, #ff9dc0 55%, #d96f9e);
+}
+
+.figure__state {
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  transform: translateX(-50%);
+  padding: 2px 9px;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hint {
+  position: absolute;
+  left: 40px;
+  bottom: 40px;
+  max-width: min(420px, calc(100vw - 80px));
+  pointer-events: none;
+}
+
+.hint__line {
+  margin: 0 0 6px;
+  color: rgba(238, 240, 247, 0.9);
+  font-size: 14.5px;
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.hint__line--dim {
+  color: rgba(238, 240, 247, 0.55);
+  font-size: 13px;
+}
+
+/*
+ * A real animation frame, when the build inlined one.
+ *
+ * Centred on the figure box and nudged by its registration offset, exactly as
+ * `Sprite` does it — the frames are not all the same size, so they are drawn at
+ * natural size rather than stretched to fill.
+ */
+.figure__frame {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}

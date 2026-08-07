@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    An agent, not an application.
+
+    Without this she takes a Dock icon and a menu bar, and ⌘-Tab treats a
+    floating character as something to switch to. LSUIElement makes the process
+    an accessory: it runs, draws its window, and stays out of the way — which is
+    what a desktop companion is. Quitting is via the tray icon, exactly as on
+    Windows.
+  -->
+  <key>LSUIElement</key>
+  <true/>
+
+  <!--
+    macOS demands a reason string before it will show the permission prompt, and
+    refuses the API outright without one. These are the two tools that need it:
+    reading the frontmost application, and switching the system appearance —
+    both of which go through System Events.
+  -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>蕾米埃尔需要这个权限，才能读取你当前在用的应用、以及帮你切换系统的明暗外观。这两项都可以在设置里关掉。</string>
+</dict>
+</plist>

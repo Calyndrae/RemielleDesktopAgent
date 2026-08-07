@@ -1,0 +1,101 @@
+# The test suites, on every push.
+#
+# Runs on Linux even though the app never ships there: none of these tests need
+# a webview. The Rust suite is SSE parsing, tool-call reassembly, tool dispatch,
+# offsets and schema migration; the frontend suite is state machines and pure
+# functions under jsdom; the layout check drives the chat panel in headless
+# Chromium as an ordinary web page. All of that is platform-independent, and
+# Linux runners are the fastest and cheapest of the three.
+#
+# Compiling still needs the GTK and webkit headers, because the `tauri` crate
+# links against them even for `cargo test`.
+
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test --run
+
+      # `pnpm install` does not fetch a browser: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+      # may be set in the dev environment, and the runner has no browser of its
+      # own that the layout check would find.
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm layout:check
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri's Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            libglib2.0-dev \
+            build-essential \
+            patchelf \
+            file
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # No, this does not need the frontend built first. `tauri.conf.json` points
+      # `frontendDist` at `../dist`, which does not exist in a fresh checkout —
+      # but only the `custom-protocol` feature embeds that directory at compile
+      # time, and it is off here, so the dev profile resolves to `devUrl` and
+      # never looks. Checked by deleting `dist/`, touching `build.rs` and
+      # building: it succeeds. Do not add a placeholder step for this.
+      #
+      # Deliberately not `--all-features`. The only feature is `custom-protocol`,
+      # which switches asset serving to the production scheme — it belongs to a
+      # release build, not to a test run, and turning it on here would test a
+      # configuration nobody develops against.
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Format
+        working-directory: src-tauri
+        run: cargo fmt --check
