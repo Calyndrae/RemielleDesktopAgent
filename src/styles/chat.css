@@ -41,7 +41,7 @@
    * did set its own colour.
    */
   color: var(--text);
-  /* Outer tier of the radius scale (8 / 15 / 16). The panel must never be
+  /* Outer tier of the radius scale (8 / 14 / 16). The panel must never be
      rounded less than the bubbles inside it — an inner shape with a larger
      radius than its container reads as a mistake. */
   border-radius: var(--r-container);
@@ -323,6 +323,12 @@
      leading than a Latin-tuned ratio gives. */
   line-height: 1.7;
   overflow-wrap: anywhere;
+  /* `pretty`, not `balance`. Balance evens out line lengths across a whole
+     block, which is right for a two-line heading and wrong for a reply that
+     can run twenty lines — it would re-flow the entire answer on every
+     streamed token. This only pulls back the last line so a paragraph cannot
+     end on a single orphaned word. */
+  text-wrap: pretty;
 }
 
 .prose--streaming {

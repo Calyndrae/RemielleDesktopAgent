@@ -150,7 +150,20 @@
 
   --text: #1c1722;
   --text-muted: #5d5769;
-  --text-faint: #6b6577;
+  /*
+   * Held apart from `--text-muted` on purpose.
+   *
+   * These are two tiers of de-emphasis and they have to look like two. At
+   * #6b6577 the gap to muted was 1.24:1 — close enough that a timestamp and a
+   * label read as the same grey, so the third tier stopped doing any work and
+   * the hierarchy the dark theme builds collapsed here. Dark separates its two
+   * by 1.44:1; this is 1.37:1, near enough to match.
+   *
+   * The ceiling is AA against `--surface`: at 4.78:1 there is real headroom
+   * over 4.5, which there would not be if this went one step lighter (#787285
+   * measures 4.38:1 and fails).
+   */
+  --text-faint: #726c7e;
   --danger: #b3213c;
   --danger-wash: rgba(179, 33, 60, 0.07);
   --danger-edge: rgba(179, 33, 60, 0.22);
@@ -275,7 +288,10 @@
   padding: 7px 10px;
   background: none;
   border: 0;
-  border-radius: 6px;
+  /* On the scale, and near enough concentric: the menu is 14px with 5px of
+     padding, so the geometric answer is 9. 8 is the scale's small tier and the
+     1px does not read; 6px was neither on the scale nor concentric. */
+  border-radius: var(--r-small);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -350,7 +366,7 @@
   padding: 8px 10px;
   max-height: 140px;
   background: var(--surface-sunken);
-  border-radius: 6px;
+  border-radius: var(--r-small);
   color: var(--text-muted);
   font-family: "Cascadia Mono", "Consolas", "SF Mono", Menlo, monospace;
   font-size: 12px;
@@ -365,7 +381,7 @@
   padding: 6px 14px;
   background: var(--accent);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-small);
   color: var(--on-accent);
   font: inherit;
   font-weight: 600;
