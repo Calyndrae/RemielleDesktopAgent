@@ -1,0 +1,18 @@
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"x_groq":{"id":"req_01kzdg341yepha586m6xh375ay","seed":1718718042}}
+
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[{"index":0,"delta":{"reasoning":"User","channel":"analysis"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[{"index":0,"delta":{"reasoning":" says","channel":"analysis"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[{"index":0,"delta":{"content":"嗨"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[{"index":0,"delta":{"content":"，"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[{"index":0,"delta":{"content":"别"},"logprobs":null,"finish_reason":null}]}
+
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"x_groq":{"id":"req_01kzdg341yepha586m6xh375ay","usage":{"queue_time":0.206711887,"prompt_tokens":455,"prompt_time":0.02724561,"completion_tokens":82,"completion_time":0.084992029,"total_tokens":537,"total_time":0.112237639,"completion_tokens_details":{"reasoning_tokens":42}}},"usage":{"queue_time":0.206711887,"prompt_tokens":455,"prompt_time":0.02724561,"completion_tokens":82,"completion_time":0.084992029,"total_tokens":537,"total_time":0.112237639,"completion_tokens_details":{"reasoning_tokens":42}}}
+
+data: {"id":"chatcmpl-groq","object":"chat.completion.chunk","created":1786085740,"model":"openai/gpt-oss-20b","system_fingerprint":"fp_groq","choices":[],"usage":{"queue_time":0.206711887,"prompt_tokens":455,"prompt_time":0.02724561,"completion_tokens":82,"completion_time":0.084992029,"total_tokens":537,"total_time":0.112237639,"completion_tokens_details":{"reasoning_tokens":42}},"service_tier":"on_demand"}
+
+data: [DONE]
+

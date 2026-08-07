@@ -31,6 +31,12 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-store = "2"
 tauri-plugin-os = "2"
+# `log` was already a dependency and `log::warn!` was already being called in
+# assets.rs, but nothing ever installed a logger, so every one of those records
+# went nowhere. This is the backend that makes them real, and it writes to a
+# file — which is what turns "it just failed" into something a user can send
+# someone.
+tauri-plugin-log = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

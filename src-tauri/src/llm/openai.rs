@@ -400,4 +400,70 @@ mod tool_call_tests {
         assert!(parsed.tool_fragments.is_empty());
         assert_eq!(parsed.content, "你好");
     }
+
+    /// A real response, captured off the wire, decoded the way the app decodes it.
+    ///
+    /// Every other test in this file hands `parse_chunk` a payload written by
+    /// hand, which proves the parser copes with what we *expected* a provider
+    /// to send. That cannot catch a provider sending something nobody
+    /// predicted — and most of the twelve bugs in the handoff were exactly
+    /// that. This one runs bytes Groq actually produced through both stages the
+    /// streaming loop uses: `SseDecoder`, then `parse_chunk`.
+    #[test]
+    fn decodes_a_real_groq_gpt_oss_stream() {
+        use crate::llm::sse::SseDecoder;
+
+        let raw = include_str!("fixtures/groq-gpt-oss-20b.sse");
+
+        let mut decoder = SseDecoder::new();
+        let mut content = String::new();
+        let mut reasoning = String::new();
+        let mut usage = None;
+        let mut finish = None;
+
+        // Fed in slices rather than whole: the network does not respect event
+        // boundaries, and not caring about that is the decoder's entire job.
+        // Split on character boundaries, since decoding bytes to UTF-8 across
+        // chunks happens upstream of here in the real loop.
+        let chars: Vec<char> = raw.chars().collect();
+        for slice in chars.chunks(9) {
+            let text: String = slice.iter().collect();
+            for event in decoder.push(&text) {
+                if let Some(parsed) = parse_chunk(&event.data) {
+                    content.push_str(&parsed.content);
+                    reasoning.push_str(&parsed.reasoning);
+                    if parsed.usage.is_some() {
+                        usage = parsed.usage;
+                    }
+                    if parsed.finish_reason.is_some() {
+                        finish = parsed.finish_reason;
+                    }
+                }
+            }
+        }
+
+        // Her reply, in Chinese because of the persona — and CJK is what makes
+        // splitting the fixture mid-character above worth doing.
+        assert!(
+            content.starts_with('嗨'),
+            "expected her reply, got {content:?}"
+        );
+
+        // gpt-oss streams its chain of thought in `delta.reasoning`, next to a
+        // `delta.channel` field that nothing in `Delta` declares. Serde ignores
+        // unknown fields by default; if anyone ever adds `deny_unknown_fields`
+        // to that struct every chunk here silently stops parsing, and this is
+        // the test that would say so.
+        assert!(
+            reasoning.starts_with("User says"),
+            "reasoning was dropped: {reasoning:?}"
+        );
+
+        assert_eq!(finish.as_deref(), Some("stop"));
+
+        // Usage arrives on a trailing chunk whose `choices` array is empty — a
+        // shape it would be easy to dismiss as "no choices, nothing to do".
+        let usage = usage.expect("usage chunk was not parsed");
+        assert_eq!(usage.prompt, 455);
+    }
 }

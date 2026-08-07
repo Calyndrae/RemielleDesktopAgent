@@ -458,17 +458,41 @@ async fn run_round<R: Runtime>(
         }
     };
 
-    let response = builder
-        .send()
-        .await
-        .map_err(|e| provider::classify_transport(&e))?;
+    /*
+     * What is deliberately absent from these lines: the API key, the request
+     * body, and anything the user typed.
+     *
+     * This is a chat application. A log that quietly accumulated a transcript
+     * would be a worse leak than the one the credential store exists to
+     * prevent, and it would sit in a plain file anything on the machine can
+     * read. What is recorded is the provider, the model, the status and the
+     * provider's own error text — enough to tell a wrong model id from a dead
+     * key from an unreachable host, and all of it about the request rather than
+     * its contents.
+     */
+    let response = builder.send().await.map_err(|e| {
+        let error = provider::classify_transport(&e);
+        log::warn!("{} {model}: could not reach {base} — {error}", info.id);
+        error
+    })?;
 
     if !response.status().is_success() {
         let status = response.status().as_u16();
         let retry_after = retry_after_secs(&response);
         let text = response.text().await.unwrap_or_default();
+        // The provider's body, not only the classification. A 404 for a wrong
+        // model id and a 404 for a wrong base URL are the same variant and
+        // entirely different problems; only the provider's own words separate
+        // them.
+        log::warn!(
+            "{} {model}: HTTP {status} from {base} — {}",
+            info.id,
+            text.chars().take(500).collect::<String>()
+        );
         return Err(provider::classify_http(status, &text, retry_after));
     }
+
+    log::info!("{} {model}: streaming", info.id);
 
     let mut decoder = sse::SseDecoder::new();
     let mut splitter = think::ThinkSplitter::new();

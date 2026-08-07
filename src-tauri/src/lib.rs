@@ -41,6 +41,34 @@ pub fn run() {
     }
 
     builder
+        /*
+         * Diagnostics.
+         *
+         * `log` was already a dependency and `assets.rs` already called
+         * `log::warn!`, but no logger was ever installed — the `log` crate is a
+         * facade, and without a backend every record is discarded. So the one
+         * place that bothered to report a problem was reporting it to nobody,
+         * and a failed API call left nothing behind at all.
+         *
+         * The file target is the point. A companion that talks to a network API
+         * will sometimes fail in ways only the user can reproduce, and "it
+         * didn't work" is not something anyone can act on. On macOS this lands
+         * in ~/Library/Logs/com.calyndrae.remielle-desktop-agent/.
+         *
+         * Info by default: enough to see what happened, without writing a line
+         * per streamed token.
+         */
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: None,
+                    }),
+                ])
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
