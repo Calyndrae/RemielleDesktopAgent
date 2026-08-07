@@ -178,8 +178,17 @@ pub fn check_key_format(provider: &ProviderInfo, key: &str) -> Option<KeyFormatI
 /// Collapsing everything into "request failed" is the difference between a user
 /// fixing their key in ten seconds and giving up: a bad key, an out-of-credit
 /// account, a rate limit and a blocked proxy all need different responses.
+/// `rename_all_fields` for the same reason as `StreamEvent`: renaming variants
+/// does not reach the fields inside them, so `retry_after` would arrive at a
+/// frontend reading `retryAfter` and quietly drop the one number a rate-limit
+/// message exists to carry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, thiserror::Error)]
-#[serde(rename_all = "camelCase", tag = "kind", content = "detail")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind",
+    content = "detail"
+)]
 pub enum ApiError {
     #[error("the API key was rejected")]
     InvalidKey { message: String },

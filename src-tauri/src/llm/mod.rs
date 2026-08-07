@@ -71,8 +71,31 @@ pub enum ToolActivity {
     Citation { title: String, url: String },
 }
 
+/*
+ * `rename_all_fields` is load-bearing here.
+ *
+ * On an enum, `rename_all` renames the *variants*; it does not touch the fields
+ * inside them. So this serialised its tag as `content`/`done` while every field
+ * stayed snake_case, and `stream_id` went over the wire to a frontend reading
+ * `payload.streamId`.
+ *
+ * That reads `undefined`, `streamTargets.get(undefined)` misses, and
+ * `if (!assistantId) return` drops the event — every event, of every kind. The
+ * panel opened a stream, Rust ran it to completion and emitted a full reply, and
+ * the UI discarded all of it and sat on 「思考中…」 forever, because a message
+ * with no chunks and a streaming status is precisely what "thinking" renders.
+ *
+ * Nothing failed loudly: the Rust tests never serialised this type, the
+ * TypeScript mirror describes a shape nobody checked against the sender, and the
+ * log correctly reported the request as fine. `wire_format` at the bottom of
+ * this file is the test that would have caught it.
+ */
 #[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase", tag = "type")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "type"
+)]
 pub enum StreamEvent {
     Content {
         stream_id: String,
@@ -1397,5 +1420,133 @@ mod tool_loop_tests {
         assert_eq!(offered.len(), MAX_TOOL_ROUNDS + 1);
         assert!(offered[..MAX_TOOL_ROUNDS].iter().all(|o| *o));
         assert_eq!(offered.last(), Some(&false));
+    }
+}
+
+#[cfg(test)]
+mod wire_format {
+    use super::*;
+
+    /// Every key the frontend reads, asserted against the bytes it will receive.
+    ///
+    /// This exists because the bug it guards was invisible to everything else.
+    /// The Rust tests exercised parsing and never serialised an event; the
+    /// TypeScript in `lib/ipc.ts` describes the shape but is only a comment as
+    /// far as the compiler is concerned, because nothing checks it against the
+    /// sender; and the log reported the request as healthy, which it was. The
+    /// reply was produced in full and thrown away by a key that did not match.
+    ///
+    /// So: assert the strings. Anything that reads a field off one of these
+    /// events belongs here, spelled exactly as the frontend spells it.
+    fn json(event: &StreamEvent) -> serde_json::Value {
+        serde_json::to_value(event).expect("serialises")
+    }
+
+    #[test]
+    fn every_event_carries_stream_id_as_camel_case() {
+        let events = [
+            StreamEvent::Content {
+                stream_id: "s1".into(),
+                text: "hi".into(),
+            },
+            StreamEvent::Reasoning {
+                stream_id: "s1".into(),
+                text: "hm".into(),
+            },
+            StreamEvent::Usage {
+                stream_id: "s1".into(),
+                usage: TokenUsage {
+                    prompt: 1,
+                    completion: 2,
+                    total: 3,
+                },
+            },
+            StreamEvent::Done {
+                stream_id: "s1".into(),
+            },
+            StreamEvent::Failed {
+                stream_id: "s1".into(),
+                error: ApiError::NoKey,
+            },
+        ];
+
+        for event in &events {
+            let value = json(event);
+            assert_eq!(
+                value["streamId"], "s1",
+                "no streamId on {value} — the frontend drops any event it cannot key"
+            );
+            assert!(
+                value.get("stream_id").is_none(),
+                "snake_case leaked into {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn tool_events_carry_call_id_as_camel_case() {
+        for event in [
+            StreamEvent::ToolCall {
+                stream_id: "s1".into(),
+                call_id: "c1".into(),
+                tool: "get_system_info".into(),
+                label: "读取系统信息".into(),
+            },
+            StreamEvent::ToolResult {
+                stream_id: "s1".into(),
+                call_id: "c1".into(),
+                tool: "get_system_info".into(),
+                summary: "ok".into(),
+                ok: true,
+            },
+            StreamEvent::ToolConfirm {
+                stream_id: "s1".into(),
+                call_id: "c1".into(),
+                tool: "set_system_theme".into(),
+                label: "切换系统明暗主题".into(),
+                detail: "dark".into(),
+            },
+        ] {
+            let value = json(&event);
+            assert_eq!(value["callId"], "c1", "no callId on {value}");
+            assert!(
+                value.get("call_id").is_none(),
+                "snake_case leaked into {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_type_tag_matches_what_the_switch_statement_matches_on() {
+        // The frontend switches on these exact strings; a mismatch is a silently
+        // ignored event rather than an error.
+        assert_eq!(
+            json(&StreamEvent::Done {
+                stream_id: "s".into()
+            })["type"],
+            "done"
+        );
+        assert_eq!(
+            json(&StreamEvent::ToolCall {
+                stream_id: "s".into(),
+                call_id: "c".into(),
+                tool: "t".into(),
+                label: "l".into(),
+            })["type"],
+            "toolCall"
+        );
+    }
+
+    #[test]
+    fn a_rate_limit_keeps_its_retry_after() {
+        let value = serde_json::to_value(ApiError::RateLimited {
+            message: "slow down".into(),
+            retry_after: Some(30),
+        })
+        .expect("serialises");
+
+        assert_eq!(value["kind"], "rateLimited");
+        assert_eq!(value["detail"]["retryAfter"], 30);
+        assert!(value["detail"].get("retry_after").is_none());
     }
 }
