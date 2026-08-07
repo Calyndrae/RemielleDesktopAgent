@@ -196,8 +196,20 @@ done it:
   in colour rather than flattened to a template silhouette. Show/hide, come back
   on screen, settings and quit compile and are unit-tested at the label level,
   but none has been clicked.
+- **The run-at-login toggle.** No login item has been observed being written.
+  Check for `~/Library/LaunchAgents/com.calyndrae.remielle-desktop-agent.plist`
+  after flipping it.
 
-Both are seconds of manual checking for anyone sitting at the machine.
+All three are seconds of manual checking for anyone sitting at the machine.
+
+The obstacle was the same each time and is worth recording so the next session
+does not waste an hour on it: the agent tooling used here refuses to synthesise
+a click unless it can attribute the target point to an allowlisted application,
+and on this machine it resolved *every* point on the desktop — her sprite, the
+Finder window beneath her, desktop icons, the menu-bar extras — to the Dock or
+Control Center. It did so with the app fully quit, so it is a property of the
+tooling and says nothing about the overlay. A human at the keyboard has no such
+problem.
 
 The build is ad-hoc signed (linker signature only). Built locally it launches
 without complaint because it never receives a quarantine attribute; copied to
@@ -225,9 +237,14 @@ Ordered by what actually unblocks daily use.
   screen" is the manual escape hatch for everything subtler. Six unit tests in
   `window::overlay::tests`. Not covered: a display that changes *resolution*
   rather than disappearing.
-- **Run at login.** `tauri-plugin-autostart` is a dependency and unwired. The
-  macOS `LaunchAgent` launcher is already configured in `lib.rs`, so this is
-  a Settings toggle and a plugin call. Probably the smallest remaining job.
+- ~~**Run at login.**~~ **Done.** `src/lib/autostart.ts`, toggled from Settings.
+  Deliberately *not* in the config store — the registry key and the
+  `LaunchAgent` plist belong to the OS and can be removed from System Settings
+  without this app knowing, so a stored copy would go stale and lie. Nothing is
+  persisted; the OS is asked on open and again after every write, and
+  `setAutostart` returns the re-read state rather than the requested one so a
+  refused write cannot show as a ticked box. Seven tests. **The toggle has not
+  been clicked** — see §4.1.
 - **Fullscreen game auto-hide.** **The previous note here was wrong**, and it
   understated the work: `src-tauri/src/platform/windows.rs` contains exactly one
   function, `cursor_position`. There is no foreground-window detection anywhere
