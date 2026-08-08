@@ -99,11 +99,13 @@ pub fn run() {
             llm::provider::list_providers,
             llm::provider::check_key,
             tools::list_tools,
+            tools::active_window_name,
             llm::resolve_tool_confirm,
             llm::start_chat,
             llm::cancel_chat,
             llm::verify_key,
             llm::list_models,
+            llm::ambient_line,
             quit_app,
         ])
         .setup(|app| {

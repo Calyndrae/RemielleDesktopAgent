@@ -391,3 +391,107 @@
 .fault__retry:hover {
   background: var(--accent-strong);
 }
+
+/* ---------- narration ---------- */
+
+/*
+ * Her speech bubble.
+ *
+ * Built from the panel's own tokens rather than a new look: same surface, same
+ * border, same shadow, same radius scale. It is the same character speaking, so
+ * it should read as the same product — a second visual language for the one
+ * surface that appears unannounced would be the thing that makes it feel bolted
+ * on.
+ *
+ * Opaque, like every other surface here. See the design note in HANDOFF §7:
+ * translucency picks up the wallpaper and looks grubby.
+ */
+.narration {
+  position: absolute;
+  z-index: 15; /* over the panel, under the menus */
+  max-width: 260px;
+  padding: 12px 14px;
+
+  background: var(--surface);
+  border: 1px solid var(--border);
+  /* Outer tier: the buttons inside sit at --r-small, and a container is never
+     rounded less than what it holds. */
+  border-radius: var(--r-surface);
+  box-shadow: var(--shadow);
+  /* Self-contained surface — see the note on `.panel`. */
+  color: var(--text);
+
+  animation: narration-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes narration-in {
+  from {
+    opacity: 0;
+    /* From her direction, small. The same idea as the panel's entrance: it
+       comes out of her rather than appearing beside her. */
+    transform: translateY(6px) scale(0.94);
+  }
+}
+
+.narration__text {
+  margin: 0;
+  font-size: var(--fs-base);
+  /* Looser than a label: this is a sentence someone said, and CJK wants the
+     room. */
+  line-height: 1.65;
+  /* One remark, never a paragraph — the Rust side caps it, this keeps a long
+     unbroken token from bursting the bubble anyway. */
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.narration__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.narration__btn {
+  min-width: 0;
+  padding: 5px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-small);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  /* Native desktop feel, per the design rules. */
+  cursor: default;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.narration__btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+/*
+ * The dismissal is quieter than the reply, deliberately.
+ *
+ * Both are legitimate, but only one of them is what she is hoping for. Making
+ * "stop talking to me" as loud as "talk to me" would be a strange thing for the
+ * character to offer, and making it hard to find would be worse. Quiet and
+ * present is the honest weighting.
+ */
+.narration__btn--quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.narration__btn--quiet:hover {
+  background: var(--surface-raised);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .narration {
+    animation: none;
+  }
+}

@@ -1726,3 +1726,233 @@ mod wire_format {
         assert!(value["detail"].get("retry_after").is_none());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Unprompted lines
+// ---------------------------------------------------------------------------
+
+/// What she is told about the moment, so the line is about *now*.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AmbientRequest {
+    pub provider: String,
+    pub base_url: Option<String>,
+    pub model: String,
+    /// The user's editable voice settings. The identity is added here as always.
+    pub system: Option<String>,
+    /// Facts about right now, assembled by the frontend. Deliberately a list of
+    /// short statements rather than prose — see `ambient_line`.
+    pub facts: Vec<String>,
+}
+
+/// The instruction that turns facts into one line in her voice.
+///
+/// Written as a brief rather than a template. The whole point of generating this
+/// is that a canned "Hi, still working?" is the thing that makes a companion
+/// feel like a toy — the second time you see it you know there is nothing there.
+/// So this says what the line is *for* and what it must not be, and leaves the
+/// words to her.
+const AMBIENT_BRIEF: &str = "你刚好抬头看了一眼，想说一句话。\n\
+    要求：一句，最多 25 个字，中文。\n\
+    可以提到下面这些情况里的一两个，但不要全部列出来，也不要复述成清单。\n\
+    不要问「需要帮忙吗」这类客套，不要自我介绍，不要用「作为AI」之类的说法。\n\
+    只输出这句话本身，不要加引号，不要加解释。";
+
+/// How many tokens one line is allowed. A cap this tight is also a safety net:
+/// a model that ignores the brief and starts writing an essay gets cut off
+/// rather than filling the screen.
+const AMBIENT_MAX_TOKENS: u32 = 120;
+
+/// Asks for one unprompted line.
+///
+/// Non-streaming on purpose. There is no panel to stream into and nobody
+/// watching it arrive; the line either exists or the moment passes, and a
+/// partial one is worse than none.
+#[tauri::command]
+pub async fn ambient_line(request: AmbientRequest) -> Result<String, ApiError> {
+    let info = resolve(&request.provider)?;
+    let key = key_for(info)?;
+    let base = base_url(info, request.base_url.as_deref());
+    if base.is_empty() {
+        return Err(ApiError::Network {
+            message: "没有配置服务地址 / no base URL configured".into(),
+        });
+    }
+
+    let persona = match request.system.as_deref().map(str::trim) {
+        Some(extra) if !extra.is_empty() => format!("{IDENTITY}\n{extra}"),
+        _ => IDENTITY.to_string(),
+    };
+    let facts = if request.facts.is_empty() {
+        "（没有特别的情况）".to_string()
+    } else {
+        request.facts.join("\n")
+    };
+    let user = format!("{AMBIENT_BRIEF}\n\n情况：\n{facts}");
+
+    let http = client()?;
+    let text = match info.protocol {
+        Protocol::OpenAiCompatible => {
+            let body = serde_json::json!({
+                "model": request.model,
+                "messages": [
+                    { "role": "system", "content": persona },
+                    { "role": "user", "content": user },
+                ],
+                "stream": false,
+                "max_tokens": AMBIENT_MAX_TOKENS,
+                // Higher than the chat default. This is the one place where
+                // sameness is the failure mode: a greeting that arrives in the
+                // same shape every hour stops being a greeting.
+                "temperature": 1.0,
+            });
+            let mut builder = http.post(format!("{base}/chat/completions")).json(&body);
+            if let Some(key) = key.as_deref() {
+                builder = builder.bearer_auth(key);
+            }
+            let response = builder
+                .send()
+                .await
+                .map_err(|e| provider::classify_transport(&e))?;
+            let status = response.status();
+            let payload = response.text().await.unwrap_or_default();
+            if !status.is_success() {
+                return Err(provider::classify_http(status.as_u16(), &payload, None));
+            }
+            serde_json::from_str::<serde_json::Value>(&payload)
+                .ok()
+                .and_then(|v| {
+                    v["choices"][0]["message"]["content"]
+                        .as_str()
+                        .map(str::to_string)
+                })
+                .unwrap_or_default()
+        }
+        Protocol::Gemini => {
+            let body = serde_json::json!({
+                "contents": [{ "role": "user", "parts": [{ "text": user }] }],
+                "systemInstruction": { "parts": [{ "text": persona }] },
+                "generationConfig": {
+                    "temperature": 1.0,
+                    "maxOutputTokens": AMBIENT_MAX_TOKENS,
+                },
+            });
+            let model = &request.model;
+            let mut builder = http
+                .post(format!("{base}/models/{model}:generateContent"))
+                .json(&body);
+            if let Some(key) = key.as_deref() {
+                builder = builder.header("x-goog-api-key", key);
+            }
+            let response = builder
+                .send()
+                .await
+                .map_err(|e| provider::classify_transport(&e))?;
+            let status = response.status();
+            let payload = response.text().await.unwrap_or_default();
+            if !status.is_success() {
+                return Err(provider::classify_http(status.as_u16(), &payload, None));
+            }
+            serde_json::from_str::<serde_json::Value>(&payload)
+                .ok()
+                .and_then(|v| {
+                    v["candidates"][0]["content"]["parts"][0]["text"]
+                        .as_str()
+                        .map(str::to_string)
+                })
+                .unwrap_or_default()
+        }
+    };
+
+    let line = tidy_ambient_line(&text);
+    if line.is_empty() {
+        return Err(ApiError::Malformed {
+            message: "她这次没想出要说什么 / no line came back".into(),
+        });
+    }
+    log::info!("ambient line: {} chars", line.chars().count());
+    Ok(line)
+}
+
+/// Trims a generated line down to something that fits in a speech bubble.
+///
+/// Models ignore "one line, no quotes" often enough that enforcing it here is
+/// cheaper than hoping. Pure, so the rules are testable without a provider.
+pub fn tidy_ambient_line(raw: &str) -> String {
+    // Reasoning models can still wrap their answer in <think>; take what is
+    // after the last close tag rather than showing the thought.
+    let after_think = raw.rsplit("</think>").next().unwrap_or(raw);
+
+    let first = after_think
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+
+    // Surrounding quotes are the most common way the brief gets ignored.
+    let unquoted = first
+        .trim_matches(|c| matches!(c, '"' | '\'' | '「' | '」' | '“' | '”' | '『' | '』'))
+        .trim();
+
+    // A hard cap in characters, because `max_tokens` is a budget rather than a
+    // promise and one runaway sentence should not become a paragraph on screen.
+    const MAX_CHARS: usize = 60;
+    if unquoted.chars().count() <= MAX_CHARS {
+        return unquoted.to_string();
+    }
+    unquoted.chars().take(MAX_CHARS).collect::<String>() + "…"
+}
+
+#[cfg(test)]
+mod ambient_tests {
+    use super::*;
+
+    #[test]
+    fn quotes_the_model_added_are_removed() {
+        // "只输出这句话本身，不要加引号" is in the brief and gets ignored often
+        // enough that hoping is not a strategy.
+        assert_eq!(tidy_ambient_line("\"在忙呀？\""), "在忙呀？");
+        assert_eq!(tidy_ambient_line("「在忙呀？」"), "在忙呀？");
+        assert_eq!(tidy_ambient_line("“在忙呀？”"), "在忙呀？");
+    }
+
+    #[test]
+    fn only_the_first_line_survives() {
+        // A model that explains itself afterwards would otherwise put the
+        // explanation in the speech bubble.
+        assert_eq!(
+            tidy_ambient_line("在忙呀？\n\n（这句话符合她的语气）"),
+            "在忙呀？"
+        );
+    }
+
+    #[test]
+    fn leading_blank_lines_are_skipped() {
+        assert_eq!(tidy_ambient_line("\n\n  在忙呀？  "), "在忙呀？");
+    }
+
+    #[test]
+    fn a_reasoning_models_thought_is_not_the_line() {
+        // Some models emit <think> inline even for a one-shot request. Showing
+        // the thought instead of the line would be both wrong and strange.
+        let raw = "<think>The user has been idle. Keep it short and teasing.</think>还没歇？";
+        assert_eq!(tidy_ambient_line(raw), "还没歇？");
+    }
+
+    #[test]
+    fn a_runaway_answer_is_cut_rather_than_shown_whole() {
+        // max_tokens is a budget, not a promise. A model that decides to write
+        // an essay must not turn the bubble into a wall.
+        let long = "啊".repeat(200);
+        let line = tidy_ambient_line(&long);
+        assert!(line.chars().count() <= 61, "{} chars", line.chars().count());
+        assert!(line.ends_with('…'), "a cut line should show it was cut");
+    }
+
+    #[test]
+    fn nothing_usable_comes_back_as_empty_so_the_caller_can_skip_it() {
+        // Better to say nothing than to pop an empty bubble at someone.
+        assert_eq!(tidy_ambient_line(""), "");
+        assert_eq!(tidy_ambient_line("   \n  \n"), "");
+    }
+}

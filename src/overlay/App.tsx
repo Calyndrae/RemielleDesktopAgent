@@ -17,6 +17,7 @@ import type { PackManifest } from "@/types/pack";
 import { ChatPanel } from "./chat/ChatPanel";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { FaultPanel } from "./FaultPanel";
+import { Narration } from "./Narration";
 import { Sprite } from "./Sprite";
 
 const DEFAULT_PACK_ID = "little-remielle";
@@ -255,6 +256,9 @@ export function App() {
   return (
     <>
       <ChatPanel geometry={geometry} />
+      {/* Above the panel in the tree so it paints over it if both are somehow
+          up; the z-index does the real ordering. */}
+      <Narration />
       <Sprite
         pack={pack}
         geometry={geometry}

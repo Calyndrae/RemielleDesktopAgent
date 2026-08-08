@@ -1,6 +1,9 @@
 import { useEffect, useRef } from "react";
 
 import { nextDelayMs, pickActivity } from "@/lib/ambient";
+import { buildFacts } from "@/lib/ambientFacts";
+import { ipc } from "@/lib/ipc";
+import { isReady, useConfigStore } from "@/state/config";
 import { ambientEmotePool, useAgentStore } from "@/state/agent";
 import { SLEEP_AFTER_MS, useAmbientStore } from "@/state/ambient";
 import { useChatStore } from "@/state/chat";
@@ -23,6 +26,26 @@ export function useAmbient(pack: PackManifest | null): void {
   const packRef = useRef(pack);
   packRef.current = pack;
 
+  /*
+   * When the keyboard or mouse was last touched.
+   *
+   * Kept here rather than derived from the sleep timer because the two answer
+   * different questions: that one asks "should she doze", this one is a fact
+   * she gets to remark on. A ref, because it is written on every pointer move
+   * and nothing should re-render for it.
+   */
+  const lastInputRef = useRef(Date.now());
+  useEffect(() => {
+    const touch = () => {
+      lastInputRef.current = Date.now();
+    };
+    const events = ["pointermove", "pointerdown", "keydown", "wheel"] as const;
+    for (const name of events) window.addEventListener(name, touch, { passive: true });
+    return () => {
+      for (const name of events) window.removeEventListener(name, touch);
+    };
+  }, []);
+
   // ---- the activity schedule ----
   useEffect(() => {
     const schedule = () => {
@@ -44,13 +67,12 @@ export function useAmbient(pack: PackManifest | null): void {
       if (agent.canRunAmbient() && ambient.blockedBy() === null) {
         if (pickActivity() === "emote") {
           changeEmote(packRef.current);
+          ambient.noteFired();
         } else {
-          // A generated greeting needs the provider, which lands with the
-          // narration copy; until then she simply changes what she is doing
-          // rather than saying something canned.
-          changeEmote(packRef.current);
+          // Fire-and-forget: the schedule must not wait on a network call, and
+          // a greeting that arrives late is still a greeting.
+          void speak(lastInputRef.current);
         }
-        ambient.noteFired();
       }
 
       schedule();
@@ -146,4 +168,73 @@ function changeEmote(pack: PackManifest | null): void {
       setEmoteOverride(null);
     }
   }, hold);
+}
+
+/**
+ * Asks her for a line, and shows it if one comes back.
+ *
+ * Everything here is best-effort. She speaks unprompted, which means nobody is
+ * waiting for this and nobody should be told when it does not work: a failed
+ * greeting is a moment that quietly did not happen, not an error worth a
+ * toast. The one thing that *is* worth being strict about is not counting a
+ * greeting that never appeared against the daily cap.
+ */
+async function speak(lastInputAt: number): Promise<void> {
+  const config = useConfigStore.getState();
+
+  // Nothing to ask. She has no voice until a provider is configured, and
+  // silently doing nothing is the right behaviour rather than an error.
+  if (!isReady(config)) return;
+
+  const ambient = useAmbientStore.getState();
+
+  /*
+   * The foreground app, only with permission.
+   *
+   * `get_active_window` is a switch the user owns, and it governs this for the
+   * same reason it governs the tool: it is the same fact about the same screen.
+   * Reading it here regardless would route around a "no" the user had already
+   * given.
+   */
+  const mayReadWindow = config.tools.includes("get_active_window");
+  const activeApp = mayReadWindow
+    ? await ipc.activeWindowName().catch(() => null)
+    : null;
+
+  const facts = buildFacts({
+    now: new Date(),
+    idleMs: Date.now() - lastInputAt,
+    firedToday: ambient.runtime.firedToday,
+    activeApp,
+  });
+
+  try {
+    const line = await ipc.ambientLine({
+      provider: config.provider,
+      baseUrl: config.baseUrl.trim() || null,
+      model: config.model,
+      system: config.systemPrompt.trim() || null,
+      facts,
+    });
+    if (!line) return;
+
+    /*
+     * Re-checked after the round trip, not before it.
+     *
+     * A model can take several seconds, and in those seconds the user may have
+     * opened the panel or asked her to stop for the day. Showing a line decided
+     * before that would be her ignoring an instruction she was given while she
+     * was thinking.
+     */
+    const now = useAmbientStore.getState();
+    if (now.blockedBy() !== null) return;
+    if (useChatStore.getState().phase !== "closed") return;
+
+    now.say(line);
+    // Counted only now. A greeting that failed, or that arrived after the user
+    // said stop, has not been spent.
+    now.noteFired();
+  } catch {
+    // Deliberately silent. See the note above.
+  }
 }

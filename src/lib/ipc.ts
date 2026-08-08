@@ -113,10 +113,30 @@ export const ipc = {
     invoke<string[]>("verify_key", { providerId, baseUrl, key }),
   listModels: (providerId: string, baseUrl: string | null) =>
     invoke<string[]>("list_models", { providerId, baseUrl }),
+
+  /**
+   * One unprompted line, generated fresh.
+   *
+   * Deliberately not a template with slots. A companion whose greetings are
+   * drawn from a fixed list stops being a character the second time you see the
+   * same one — the whole value of this is that the line is hers and is about
+   * this particular moment. `facts` are short statements about now; what she
+   * does with them is her business.
+   */
+  ambientLine: (request: AmbientRequest) => invoke<string>("ambient_line", { request }),
   startChat: (streamId: string, request: ChatRequest) =>
     invoke<void>("start_chat", { streamId, request }),
   cancelChat: (streamId: string) => invoke<void>("cancel_chat", { streamId }),
   listTools: () => invoke<ToolSpec[]>("list_tools"),
+
+  /**
+   * The foreground application's name, for an unprompted line.
+   *
+   * Only ever called when `get_active_window` is switched on. It is the same
+   * fact about the same screen as the tool of that name, so one switch governs
+   * both rather than the user having to say no twice.
+   */
+  activeWindowName: () => invoke<string | null>("active_window_name"),
   /** Answers a pending `toolConfirm`. */
   resolveToolConfirm: (callId: string, approved: boolean) =>
     invoke<void>("resolve_tool_confirm", { callId, approved }),
@@ -150,6 +170,16 @@ export interface ChatRequest {
   appAllowlist: string[];
   /** Programmable Search engine id (`cx`). Public; the key is not sent. */
   searchEngineId: string;
+}
+
+export interface AmbientRequest {
+  provider: string;
+  baseUrl: string | null;
+  model: string;
+  /** Her voice settings. The identity is added in Rust, as always. */
+  system: string | null;
+  /** Short statements about the current moment. */
+  facts: string[];
 }
 
 /** One entry in the tool catalog. Mirrors the Rust `ToolSpec`. */

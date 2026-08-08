@@ -829,3 +829,20 @@ mod platform_tests {
         }
     }
 }
+
+/// The foreground application's name, for an unprompted line.
+///
+/// Deliberately a separate command from the `get_active_window` *tool*, because
+/// the two have different callers: the tool is something the model asks for
+/// mid-conversation, and this is something the app assembles before deciding
+/// whether she has anything worth saying.
+///
+/// They share the same consent, though. The caller only invokes this when
+/// `get_active_window` is switched on, because it is the same fact about the
+/// same screen and one switch should govern both. Returns `None` rather than an
+/// error when the platform will not say — a missing fact is simply one fewer
+/// thing to remark on.
+#[tauri::command]
+pub fn active_window_name() -> Option<String> {
+    system::active_window().ok().map(|outcome| outcome.result)
+}
