@@ -20,12 +20,31 @@
 //! same rule the tool catalog is built on — she can choose, never compose —
 //! applied to the one tool that would otherwise be an exception.
 //!
-//! ## What is deliberately absent
+//! ## Why there is no second API key
 //!
-//! No scraping of a search engine's HTML. It breaks constantly, it is against
-//! the terms of every engine worth using, and a companion that silently
-//! violates a ToS on the user's IP is not a good companion. This needs a real
-//! API key, and says so plainly in Settings rather than pretending otherwise.
+//! The first version of this required a Google Programmable Search key, which
+//! meant a Cloud console, an API to enable, a key to mint and then a *separate*
+//! search engine to create for its `cx`. That is a reasonable thing to ask of a
+//! server operator and an absurd thing to ask of someone who wanted a desktop
+//! companion. People get one model key and consider themselves done.
+//!
+//! So the default backend needs no key at all, and it is not scraping to get
+//! there. Scraping a search engine's results page breaks constantly, violates
+//! the terms of every engine worth using, and does so on the user's own IP —
+//! that trade is not available. What *is* available are two official, documented,
+//! keyless APIs:
+//!
+//! - **Wikipedia's search API**, which returns real results with titles,
+//!   snippets and URLs, and is explicitly meant to be called by applications.
+//! - **DuckDuckGo's Instant Answer API**, which supplies a definition or
+//!   abstract when the question has one.
+//!
+//! Between them that covers the case this feature actually exists for: she does
+//! not know something factual and should look rather than guess. It is not the
+//! whole web, and the settings copy says so rather than overselling it.
+//!
+//! A Google key remains supported as an optional upgrade for anyone who wants
+//! full web coverage. It is an upgrade, not a prerequisite.
 
 use std::sync::Mutex;
 
@@ -111,12 +130,193 @@ fn client() -> Result<reqwest::Client, SearchError> {
         .map_err(|e| SearchError::Network(e.to_string()))
 }
 
+/// Which search to run.
+///
+/// `Builtin` is the default and needs nothing from the user. `Google` exists for
+/// people who want the whole web and are willing to go and get a key for it.
+#[derive(Debug, Clone)]
+pub enum Backend {
+    Builtin,
+    Google { key: String, engine_id: String },
+}
+
+/// Runs one search.
+pub async fn search(backend: &Backend, query: &str) -> Result<Vec<Hit>, SearchError> {
+    match backend {
+        Backend::Builtin => search_builtin(query).await,
+        Backend::Google { key, engine_id } => search_google(key, engine_id, query).await,
+    }
+}
+
+/// The keyless path: an instant answer if one exists, then encyclopedia results.
+///
+/// Both sources are queried, and a failure in either is survivable — half a
+/// result list beats an error, because the alternative for her is guessing.
+async fn search_builtin(query: &str) -> Result<Vec<Hit>, SearchError> {
+    let http = client()?;
+    let lang = wiki_lang_for(query);
+
+    // Sequential rather than concurrent on purpose. Two requests a few hundred
+    // milliseconds apart is nothing against a model round trip, and joining them
+    // would mean a shared failure mode for two independent sources.
+    let mut hits = Vec::new();
+
+    if let Ok(response) = http
+        .get("https://api.duckduckgo.com/")
+        .query(&[("q", query), ("format", "json"), ("no_html", "1")])
+        .send()
+        .await
+    {
+        if let Ok(body) = response.text().await {
+            hits.extend(parse_duckduckgo(&body));
+        }
+    }
+
+    let wiki = http
+        .get(format!("https://{lang}.wikipedia.org/w/api.php"))
+        .query(&[
+            ("action", "query"),
+            ("list", "search"),
+            ("srsearch", query),
+            ("srlimit", &MAX_HITS.to_string()),
+            ("format", "json"),
+        ])
+        .send()
+        .await
+        .map_err(|e| SearchError::Network(e.to_string()))?;
+
+    let status = wiki.status();
+    let body = wiki.text().await.unwrap_or_default();
+    if status.is_success() {
+        hits.extend(parse_wikipedia(&body, lang));
+    }
+
+    hits.truncate(MAX_HITS);
+    Ok(hits)
+}
+
+/// Which Wikipedia to ask.
+///
+/// Decided from the query's own script rather than the app locale: someone
+/// typing an English term wants the English article even in a Chinese UI, and
+/// the reverse. Crude, and right far more often than a fixed choice would be.
+pub fn wiki_lang_for(query: &str) -> &'static str {
+    let has_cjk = query.chars().any(|c| {
+        matches!(c as u32,
+            0x4E00..=0x9FFF   // CJK unified ideographs
+            | 0x3400..=0x4DBF // extension A
+            | 0x3040..=0x30FF // kana, since Japanese terms are common here
+        )
+    });
+    if has_cjk {
+        "zh"
+    } else {
+        "en"
+    }
+}
+
+/// Wikipedia's search results.
+pub fn parse_wikipedia(body: &str, lang: &str) -> Vec<Hit> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    value["query"]["search"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let title = item["title"].as_str()?;
+                    Some(Hit {
+                        title: title.to_string(),
+                        // Built from the title rather than taken from the
+                        // payload, which does not carry one. Percent-encoding
+                        // the title is what keeps a space or a CJK character
+                        // from producing a broken link.
+                        url: format!(
+                            "https://{lang}.wikipedia.org/wiki/{}",
+                            encode_path_segment(title)
+                        ),
+                        // The snippet is HTML with <span class="searchmatch">
+                        // around the hit terms.
+                        snippet: strip_tags(item["snippet"].as_str().unwrap_or_default()),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// DuckDuckGo's instant answer, when the question has one.
+///
+/// Most queries return an empty abstract, and that is fine — this is the
+/// "definition" case, not the search case, and an empty answer simply
+/// contributes nothing.
+pub fn parse_duckduckgo(body: &str) -> Vec<Hit> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+
+    let abstract_text = value["AbstractText"].as_str().unwrap_or_default().trim();
+    if abstract_text.is_empty() {
+        return Vec::new();
+    }
+    let url = value["AbstractURL"].as_str().unwrap_or_default();
+    if url.is_empty() {
+        return Vec::new();
+    }
+
+    vec![Hit {
+        title: {
+            let heading = value["Heading"].as_str().unwrap_or_default();
+            if heading.is_empty() {
+                "简介 / Overview".to_string()
+            } else {
+                heading.to_string()
+            }
+        },
+        url: url.to_string(),
+        snippet: abstract_text.chars().take(400).collect(),
+    }]
+}
+
+/// Percent-encodes a Wikipedia title for use in a path.
+fn encode_path_segment(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            // Wikipedia's own canonical form, and prettier than %20.
+            b' ' => out.push('_'),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+/// Removes the markup Wikipedia puts inside snippets.
+fn strip_tags(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut inside = false;
+    for ch in text.chars() {
+        match ch {
+            '<' => inside = true,
+            '>' => inside = false,
+            _ if !inside => out.push(ch),
+            _ => {}
+        }
+    }
+    decode_entities(&out)
+}
+
 /// Runs one search against Google Programmable Search.
 ///
 /// `engine_id` is the search engine's public identifier (`cx`), which is not a
 /// secret and lives in settings; the key is read from the credential store by
 /// the caller and passed in, so this function never touches secret storage.
-pub async fn search(key: &str, engine_id: &str, query: &str) -> Result<Vec<Hit>, SearchError> {
+async fn search_google(key: &str, engine_id: &str, query: &str) -> Result<Vec<Hit>, SearchError> {
     if key.trim().is_empty() || engine_id.trim().is_empty() {
         return Err(SearchError::NotConfigured);
     }
@@ -390,22 +590,32 @@ pub async fn run<R: tauri::Runtime>(
                 );
             }
 
-            let key = match crate::secrets::read(KEY_ACCOUNT) {
-                Ok(key) => key,
-                Err(_) => {
-                    // Said in a way the model can act on: it should tell the
-                    // user rather than retry, because retrying cannot help.
-                    return refuse(
-                        "Web search is not configured on this machine. Tell the \
-                         user to add a search key in Settings; do not retry."
-                            .into(),
-                        "还没配搜索密钥，先去设置里加".into(),
-                    );
-                }
+            /*
+             * A key upgrades the search; it is not required to have one.
+             *
+             * The keyless backend is the default because asking someone to go
+             * and mint a Google Cloud key before their desktop pet can look
+             * something up is not a trade anyone would take. If a key happens
+             * to be stored *and* an engine id is set, use it — that is the
+             * whole web instead of an encyclopedia.
+             */
+            let backend = match crate::secrets::read(KEY_ACCOUNT) {
+                Ok(key) if !engine_id.trim().is_empty() => Backend::Google {
+                    key,
+                    engine_id: engine_id.to_string(),
+                },
+                _ => Backend::Builtin,
             };
 
-            log::info!("web_search: {} chars", query.chars().count());
-            match search(&key, engine_id, query).await {
+            log::info!(
+                "web_search ({}): {} chars",
+                match backend {
+                    Backend::Builtin => "builtin",
+                    Backend::Google { .. } => "google",
+                },
+                query.chars().count()
+            );
+            match search(&backend, query).await {
                 Ok(hits) => {
                     let listing = format_hits(&hits);
                     let count = hits.len();
@@ -482,6 +692,65 @@ pub async fn run<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wikipedia_results_become_hits_with_real_urls() {
+        // The payload carries no URL, so it is built from the title. A hit with
+        // a broken link is worse than no hit: the index still resolves and she
+        // opens something that 404s.
+        let body = r#"{"query":{"search":[
+            {"title":"Rust (programming language)","snippet":"A <span class=\"searchmatch\">systems</span> language"},
+            {"title":"Borrow checker","snippet":"part of Rust"}
+        ]}}"#;
+        let hits = parse_wikipedia(body, "en");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(
+            hits[0].url,
+            "https://en.wikipedia.org/wiki/Rust_%28programming_language%29"
+        );
+        // The markup around the matched terms must not reach the model.
+        assert_eq!(hits[0].snippet, "A systems language");
+    }
+
+    #[test]
+    fn a_cjk_title_survives_url_encoding() {
+        let hits = parse_wikipedia(r#"{"query":{"search":[{"title":"绝区零"}]}}"#, "zh");
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].url.starts_with("https://zh.wikipedia.org/wiki/%"));
+        assert!(!hits[0].url.contains('绝'), "raw CJK left in the path");
+    }
+
+    #[test]
+    fn the_wikipedia_language_follows_the_query_not_the_ui() {
+        // Someone typing an English term wants the English article even in a
+        // Chinese interface, and the reverse.
+        assert_eq!(wiki_lang_for("borrow checker"), "en");
+        assert_eq!(wiki_lang_for("绝区零 蕾米埃尔"), "zh");
+        assert_eq!(wiki_lang_for("ゼンレスゾーンゼロ"), "zh");
+        // Mixed: any CJK at all is enough, since the CJK term is the specific one.
+        assert_eq!(wiki_lang_for("Rust 所有权"), "zh");
+    }
+
+    #[test]
+    fn an_empty_wikipedia_result_set_is_not_an_error() {
+        assert!(parse_wikipedia(r#"{"query":{"search":[]}}"#, "en").is_empty());
+        assert!(parse_wikipedia("nonsense", "en").is_empty());
+    }
+
+    #[test]
+    fn duckduckgo_contributes_only_when_it_has_an_abstract() {
+        // Most queries return an empty abstract. That is the normal case, not a
+        // failure, and it must contribute nothing rather than an empty bubble.
+        assert!(parse_duckduckgo(r#"{"AbstractText":"","AbstractURL":""}"#).is_empty());
+        assert!(parse_duckduckgo(r#"{"AbstractText":"Something","AbstractURL":""}"#).is_empty());
+
+        let hits = parse_duckduckgo(
+            r#"{"Heading":"Rust","AbstractText":"A systems programming language.","AbstractURL":"https://en.wikipedia.org/wiki/Rust"}"#,
+        );
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "Rust");
+        assert!(hits[0].snippet.contains("systems programming"));
+    }
 
     #[test]
     fn parses_a_programmable_search_payload() {

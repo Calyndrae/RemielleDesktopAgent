@@ -11,7 +11,7 @@ import {
 } from "@/lib/ipc";
 import { cancelPendingState, restingState, useAgentStore } from "./agent";
 import { clearLastSession, saveLastSession } from "@/lib/lastSession";
-import { agenticSearchReady, currentProvider, useConfigStore } from "./config";
+import { currentProvider, useConfigStore } from "./config";
 
 /** Hard cap on a single user message. */
 export const MAX_INPUT_LENGTH = 500;
@@ -188,8 +188,9 @@ function beginReply(set: SetState, get: () => ChatStore): void {
     .map((m) => ({ role: m.role, content: messageText(m) }));
 
   const info = currentProvider(config);
-  const useSearchTools =
-    config.webSearch && !(info?.nativeSearch ?? false) && agenticSearchReady(config);
+  // No readiness check any more: the builtin backend needs nothing, so "she may
+  // search" and "she can search" are the same question again.
+  const useSearchTools = config.webSearch && !(info?.nativeSearch ?? false);
 
   void ipc
     .startChat(streamId, {

@@ -219,12 +219,30 @@ export function isReady(state: ConfigStore): boolean {
  * else gets the tool pair in `search/mod.rs`, which needs a key and an engine
  * id the user supplies.
  */
-export function searchAvailable(state: ConfigStore): boolean {
-  return (currentProvider(state)?.nativeSearch ?? false) || agenticSearchReady(state);
+export function searchAvailable(_state: ConfigStore): boolean {
+  /*
+   * Always. There is nothing left to configure.
+   *
+   * This used to return false unless a Google Programmable Search key and
+   * engine id had been set up, which made a greyed-out switch the first thing
+   * most people saw — and the way to un-grey it was a Cloud console, an API to
+   * enable, a key to mint and a search engine to create. Nobody does that for a
+   * desktop companion, so in practice the feature did not exist.
+   *
+   * The keyless backend needs no setup at all, so the only honest answer to
+   * "can she look things up?" is yes. The parameter stays for the call sites
+   * and because a provider-specific reason to say no may return.
+   */
+  return true;
 }
 
-/** Whether the app's own search is configured. */
-export function agenticSearchReady(state: ConfigStore): boolean {
+/**
+ * Whether the optional full-web upgrade is configured.
+ *
+ * Not a precondition for searching — only for searching the whole web rather
+ * than the encyclopedia. Settings uses this to say which one is in play.
+ */
+export function fullWebSearchReady(state: ConfigStore): boolean {
   return state.searchEngineId.trim().length > 0 && state.configured.includes(SEARCH_ACCOUNT);
 }
 

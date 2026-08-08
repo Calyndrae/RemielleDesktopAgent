@@ -414,11 +414,9 @@ export function SettingsApp() {
             <span>允许联网搜索</span>
           </label>
           <span className="field__hint">
-            {canSearch
-              ? nativeSearch
-                ? "开启后，她可以在回答前查资料。用过的搜索词和网页会显示在回复上方，随时可以点开核对。聊天框里也有开关，可以单次临时关掉。"
-                : "这个服务商没有自带搜索，所以走下面配好的那一套：她想搜什么就搜什么，拿到结果列表后自己挑一条打开、读完再回答。用过的网页会显示在回复上方。"
-              : `${provider?.label ?? "当前服务商"}没有自带联网搜索。在下面填好搜索密钥和引擎 ID，这个开关就能用了。`}
+            {nativeSearch
+              ? "开启后，她可以在回答前查资料。用过的搜索词和网页会显示在回复上方，随时可以点开核对。聊天框里也有开关，可以单次临时关掉。"
+              : "开启后她就能查资料，不用你再配什么：她先搜，拿到结果自己挑一条打开、读完再回答。默认查的是维基百科和一些公开词条，够应付「这是什么」这类问题。用过的网页会显示在回复上方。"}
           </span>
         </div>
 
@@ -431,11 +429,12 @@ export function SettingsApp() {
         */}
         {!nativeSearch && (
           <div className="field">
-            <span className="field__label">她自己的搜索</span>
+            <span className="field__label">想让她搜全网？（可选）</span>
             <span className="field__hint">
-              用的是 Google Programmable Search：先搜索，把结果列表给她，她挑一条，
-              程序去抓正文，她再回答。密钥和其他密钥一样存在系统钥匙串里，不进网页层。
-              免费额度是每天 100 次。
+              上面那个开关已经能用了，不填这里也不影响。
+              区别只是搜的范围：默认查维基百科和公开词条，填了这两项就是 Google 全网。
+              要去 Google Cloud 开 Custom Search API 拿密钥，再建一个搜索引擎拿 ID —— 
+              有点麻烦，所以做成可选的。密钥和其他密钥一样存在系统钥匙串里，不进网页层。
             </span>
 
             <input
