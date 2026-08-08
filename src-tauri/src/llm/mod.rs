@@ -176,6 +176,13 @@ pub struct ChatRequest {
     /// Applications `open_app` is permitted to launch.
     #[serde(default)]
     pub app_allowlist: Vec<String>,
+    /// The Programmable Search engine's public id (`cx`).
+    ///
+    /// Not a secret and not in the credential store — it identifies which search
+    /// engine to query, not who is asking. The key that authorises the request
+    /// is read from the credential store in Rust and never travels with this.
+    #[serde(default)]
+    pub search_engine_id: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -926,6 +933,14 @@ async fn run_stream<R: Runtime>(
                         ok: false,
                     }
                 }
+                // Two dispatchers, split by what they touch. `tools::dispatch`
+                // answers questions about this machine and is synchronous;
+                // search goes over the network, needs a key, and remembers its
+                // last results between calls. Making the whole dispatcher async
+                // for two tools would tax every local one.
+                _ if crate::search::handles(&call.name) => {
+                    crate::search::run(&app, call, &request.search_engine_id).await
+                }
                 _ => tools::dispatch::dispatch(call, &request.tools, &request.app_allowlist),
             };
 
@@ -1196,6 +1211,7 @@ pub(crate) mod tests {
             web_search: search,
             tools: Vec::new(),
             app_allowlist: Vec::new(),
+            search_engine_id: String::new(),
         }
     }
 

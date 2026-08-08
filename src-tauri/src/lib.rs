@@ -1,6 +1,7 @@
 mod assets;
 mod llm;
 mod platform;
+mod search;
 mod secrets;
 mod tools;
 mod window;
@@ -76,6 +77,7 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .manage(PassthroughState::default())
         .manage(window::tray::TrayState::<tauri::Wry>::default())
+        .manage(search::SearchState::default())
         .manage(llm::StreamRegistry::default())
         .manage(llm::ConfirmRegistry::default())
         .invoke_handler(tauri::generate_handler![

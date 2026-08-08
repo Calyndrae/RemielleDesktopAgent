@@ -20,6 +20,7 @@ import {
   currentProvider,
   DEFAULT_SYSTEM_PROMPT,
   searchAvailable,
+  SEARCH_ACCOUNT,
   useConfigStore,
 } from "@/state/config";
 
@@ -33,6 +34,9 @@ export function SettingsApp() {
   const config = useConfigStore();
   const provider = currentProvider(config);
   const canSearch = useConfigStore(searchAvailable);
+  // Which of the two mechanisms applies. They need different explanations and
+  // only one of them needs configuring.
+  const nativeSearch = provider?.nativeSearch ?? false;
 
   /*
    * Login-item state, read from the OS rather than stored.
@@ -43,6 +47,17 @@ export function SettingsApp() {
    */
   const [autostart, setAutostartState] = useState(false);
   const [autostartBusy, setAutostartBusy] = useState(false);
+
+  /*
+   * The web-search key, handled exactly like a provider key.
+   *
+   * Same credential store, same "the frontend can write it and ask whether it
+   * exists but never read it back" rule. The hint is the masked tail the OS
+   * gives us, which is enough to answer "is the right one saved?" without ever
+   * putting the secret in this process.
+   */
+  const [searchKeyInput, setSearchKeyInput] = useState("");
+  const [searchKeyHint, setSearchKeyHint] = useState<string | null>(null);
 
   const [keyInput, setKeyInput] = useState("");
   const [keyState, setKeyState] = useState<KeyState>({ status: "idle" });
@@ -83,6 +98,25 @@ export function SettingsApp() {
     () => watchSystemTheme(() => useConfigStore.getState().panelTheme),
     [],
   );
+
+  useEffect(() => {
+    void ipc.keyHint(SEARCH_ACCOUNT).then(setSearchKeyHint).catch(() => setSearchKeyHint(null));
+  }, []);
+
+  const saveSearchKey = async () => {
+    const key = searchKeyInput.trim();
+    if (!key) return;
+    await ipc.storeKey(SEARCH_ACCOUNT, key);
+    await useConfigStore.getState().refreshConfigured();
+    setSearchKeyInput("");
+    setSearchKeyHint(await ipc.keyHint(SEARCH_ACCOUNT).catch(() => null));
+  };
+
+  const removeSearchKey = async () => {
+    await ipc.deleteKey(SEARCH_ACCOUNT);
+    await useConfigStore.getState().refreshConfigured();
+    setSearchKeyHint(null);
+  };
 
   // Asked on open rather than remembered. The login item can be removed from
   // System Settings without this app being involved, so a stored copy would go
@@ -381,10 +415,75 @@ export function SettingsApp() {
           </label>
           <span className="field__hint">
             {canSearch
-              ? "开启后，她可以在回答前查资料。用过的搜索词和网页会显示在回复上方，随时可以点开核对。聊天框里也有开关，可以单次临时关掉。"
-              : `${provider?.label ?? "当前服务商"}没有自带联网搜索，所以这里是灰的。DeepSeek 等服务商的搜索会在后续版本用「先搜索、再让她挑链接、然后抓正文」的方式补上。`}
+              ? nativeSearch
+                ? "开启后，她可以在回答前查资料。用过的搜索词和网页会显示在回复上方，随时可以点开核对。聊天框里也有开关，可以单次临时关掉。"
+                : "这个服务商没有自带搜索，所以走下面配好的那一套：她想搜什么就搜什么，拿到结果列表后自己挑一条打开、读完再回答。用过的网页会显示在回复上方。"
+              : `${provider?.label ?? "当前服务商"}没有自带联网搜索。在下面填好搜索密钥和引擎 ID，这个开关就能用了。`}
           </span>
         </div>
+
+        {/*
+          Only shown where it is the answer to something.
+
+          A provider with its own search does not need this, and putting the
+          form in front of that user would be asking them to configure a
+          mechanism they will never use.
+        */}
+        {!nativeSearch && (
+          <div className="field">
+            <span className="field__label">她自己的搜索</span>
+            <span className="field__hint">
+              用的是 Google Programmable Search：先搜索，把结果列表给她，她挑一条，
+              程序去抓正文，她再回答。密钥和其他密钥一样存在系统钥匙串里，不进网页层。
+              免费额度是每天 100 次。
+            </span>
+
+            <input
+              className="control"
+              type="password"
+              placeholder={searchKeyHint ? `已保存 ${searchKeyHint}` : "搜索 API 密钥"}
+              value={searchKeyInput}
+              onChange={(event) => setSearchKeyInput(event.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <input
+              className="control"
+              type="text"
+              placeholder="搜索引擎 ID（cx）"
+              value={config.searchEngineId}
+              onChange={(event) =>
+                useConfigStore.getState().patch({ searchEngineId: event.target.value })
+              }
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div className="keyrow">
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={!searchKeyInput.trim()}
+                onClick={() => void saveSearchKey()}
+              >
+                保存密钥
+              </button>
+              {searchKeyHint && (
+                <button type="button" className="btn" onClick={() => void removeSearchKey()}>
+                  删除密钥
+                </button>
+              )}
+              <button
+                type="button"
+                className="linkbtn"
+                onClick={() =>
+                  void openUrl("https://programmablesearchengine.google.com/controlpanel/all")
+                }
+              >
+                去哪里拿这两个？
+              </button>
+            </div>
+          </div>
+        )}
 
         <label className="field">
           <span className="field__label">说话方式</span>

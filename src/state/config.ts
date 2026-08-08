@@ -7,6 +7,13 @@ import type { PanelTheme } from "@/lib/theme";
 const STORAGE_KEY = "ai.config";
 
 /**
+ * Credential-store account for the web-search key. Mirrors `KEY_ACCOUNT` in
+ * `src-tauri/src/search/mod.rs`; the two must agree or the key is stored under
+ * a name nothing reads.
+ */
+export const SEARCH_ACCOUNT = "search";
+
+/**
  * How she speaks. Not who she is.
  *
  * The first line used to be "你是蕾米埃尔·丹…", which made her identity part of an
@@ -58,6 +65,14 @@ export interface AiConfig {
   panelTheme: PanelTheme;
   /** Applications `open_app` may launch. Empty means it can open nothing. */
   appAllowlist: string[];
+  /**
+   * The Programmable Search engine id (`cx`).
+   *
+   * Public, not secret — it names which search engine to query, not who is
+   * asking. The key that authorises the request lives in the OS credential
+   * store like every other key and never enters this file.
+   */
+  searchEngineId: string;
 }
 
 const DEFAULTS: AiConfig = {
@@ -80,6 +95,7 @@ const DEFAULTS: AiConfig = {
   tools: ["get_system_info"],
   panelTheme: "auto",
   appAllowlist: [],
+  searchEngineId: "",
 };
 
 interface ConfigStore extends AiConfig {
@@ -122,6 +138,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           ? stored.panelTheme
           : DEFAULTS.panelTheme,
       appAllowlist: Array.isArray(stored.appAllowlist) ? stored.appAllowlist : [],
+      searchEngineId: stored.searchEngineId ?? DEFAULTS.searchEngineId,
       providers,
       hydrated: true,
     });
@@ -138,7 +155,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         ok: info.requiresKey ? await ipc.hasKey(info.id).catch(() => false) : true,
       })),
     );
-    set({ configured: checks.filter((c) => c.ok).map((c) => c.id) });
+    // The search key is not a provider, but it lives in the same credential
+    // store and the UI asks the same question of it — "is this configured?" —
+    // so it rides in the same list rather than growing a parallel one.
+    const searchKey = await ipc.hasKey(SEARCH_ACCOUNT).catch(() => false);
+    const ready = checks.filter((c) => c.ok).map((c) => c.id);
+    set({ configured: searchKey ? [...ready, SEARCH_ACCOUNT] : ready });
   },
 
   patch: (patch) => {
@@ -154,6 +176,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       tools,
       appAllowlist,
       panelTheme,
+      searchEngineId,
     } = get();
     void writeSetting<AiConfig>(STORAGE_KEY, {
       provider,
@@ -166,6 +189,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       tools,
       appAllowlist,
       panelTheme,
+      searchEngineId,
     });
   },
 }));
@@ -186,6 +210,22 @@ export function isReady(state: ConfigStore): boolean {
  * The toggle is meaningless if the provider has no search facility, and showing
  * an enabled switch that silently does nothing would be worse than hiding it.
  */
+/**
+ * Whether this turn can search at all, by either route.
+ *
+ * Two different mechanisms end up behind one toggle, and that is deliberate —
+ * the user is asking "may she look things up?", not "which search
+ * implementation should run". Providers with their own search use it; everyone
+ * else gets the tool pair in `search/mod.rs`, which needs a key and an engine
+ * id the user supplies.
+ */
 export function searchAvailable(state: ConfigStore): boolean {
-  return currentProvider(state)?.nativeSearch ?? false;
+  return (currentProvider(state)?.nativeSearch ?? false) || agenticSearchReady(state);
 }
+
+/** Whether the app's own search is configured. */
+export function agenticSearchReady(state: ConfigStore): boolean {
+  return state.searchEngineId.trim().length > 0 && state.configured.includes(SEARCH_ACCOUNT);
+}
+
+

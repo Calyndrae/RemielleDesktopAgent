@@ -186,6 +186,52 @@ pub const CATALOG: &[ToolSpec] = &[
         ],
     },
     ToolSpec {
+        name: "web_search",
+        description: "Search the web. Use when the answer depends on something \
+                      current, or on a fact you are not sure of. Returns a \
+                      numbered list of results; read one with \
+                      read_search_result before answering from it, because the \
+                      snippets alone are rarely enough.",
+        user_label: "联网搜索",
+        risk: Risk::Read,
+        platform: Platform::Any,
+        params: &[Param {
+            name: "query",
+            description: "What to search for, as you would type it into a \
+                          search box.",
+            required: true,
+            // The one free-text parameter in the catalog, and the exception is
+            // argued rather than assumed — see the note in
+            // `the_catalog_contains_no_free_form_execution`. It becomes a query
+            // parameter on an HTTPS GET and nothing else; there is no shell, no
+            // path, and no way for it to restructure the request.
+            kind: ParamKind::Text { max_len: 200 },
+        }],
+    },
+    ToolSpec {
+        name: "read_search_result",
+        description: "Open one of the results from your last web_search and \
+                      read its text. Give the result's number from that list.",
+        user_label: "打开搜索结果里的网页",
+        risk: Risk::Read,
+        platform: Platform::Any,
+        params: &[Param {
+            name: "index",
+            description: "Which result to open, counting from 1.",
+            required: true,
+            // An index, deliberately, and not a URL.
+            //
+            // A tool taking a URL would let the model name any address it can
+            // imagine or any address a page it just read suggested to it —
+            // localhost admin panels, cloud metadata endpoints, an attacker's
+            // callback. Constraining it to a position in the list the search
+            // engine returned means she chooses among real results and cannot
+            // invent a destination. Same rule as the enums elsewhere: choose,
+            // never compose.
+            kind: ParamKind::Integer { min: 1, max: 8 },
+        }],
+    },
+    ToolSpec {
         name: "security_scan",
         description: "Run a Microsoft Defender antivirus scan. A quick scan \
                       takes a few minutes; a full scan can take hours.",
@@ -472,16 +518,62 @@ mod tests {
     fn the_catalog_contains_no_free_form_execution() {
         // The load-bearing test. If a future tool takes free text for something
         // that could be executed, this is where it gets caught.
+        //
+        // The list below is the whole set of exceptions, and adding to it is
+        // meant to be uncomfortable. An entry earns its place only if the text
+        // reaches something that cannot be made to execute, cannot be made to
+        // address a resource of the model's choosing, and is length capped.
+        //
+        // web_search.query: becomes the `q` parameter of an HTTPS GET to
+        // Google's Programmable Search endpoint, passed through reqwest's query
+        // encoder rather than concatenated into a URL. There is no shell, no
+        // path, and no way for the value to restructure the request. The
+        // companion tool deliberately does *not* take a URL — it takes an index
+        // into the results this search returned, so the model can choose a
+        // destination but never name one. See `search/mod.rs`.
+        const JUSTIFIED_FREE_TEXT: &[(&str, &str)] = &[("web_search", "query")];
+
         for spec in CATALOG {
             for param in spec.params {
-                if let ParamKind::Text { .. } = param.kind {
+                if let ParamKind::Text { max_len } = param.kind {
+                    if JUSTIFIED_FREE_TEXT.contains(&(spec.name, param.name)) {
+                        // Capped, and capped at something a query-shaped thing
+                        // fits in. An uncapped "free text" field is a different
+                        // animal from a 200-character one.
+                        assert!(
+                            max_len <= 500,
+                            "'{}.{}' is justified free text but its cap is {max_len}",
+                            spec.name,
+                            param.name
+                        );
+                        continue;
+                    }
                     panic!(
                         "tool '{}' takes free text in '{}'. Free text must never \
-                         reach anything executable — use an enum, or justify it \
-                         explicitly here.",
+                         reach anything executable — use an enum, or add it to \
+                         JUSTIFIED_FREE_TEXT above with the argument for why.",
                         spec.name, param.name
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn nothing_in_the_catalog_takes_a_url_or_a_path() {
+        // The search tools are the ones that could plausibly have grown a URL
+        // parameter, and the reason they must not is in `search/mod.rs`: a model
+        // that can name an address can be steered to localhost, to a cloud
+        // metadata endpoint, or to whatever a page it just read suggested.
+        for spec in CATALOG {
+            for param in spec.params {
+                let name = param.name.to_ascii_lowercase();
+                assert!(
+                    !name.contains("url") && !name.contains("path") && !name.contains("uri"),
+                    "'{}.{}' looks like an address the model gets to choose",
+                    spec.name,
+                    param.name
+                );
             }
         }
     }
@@ -668,11 +760,26 @@ mod tests {
 
     #[test]
     fn read_tier_tools_take_no_parameters_that_change_anything() {
+        // The rule is "a read tool must not take input that could change
+        // something". "Takes no input at all" was a cheap proxy for that, and it
+        // held while every read tool was a plain query about this machine.
+        //
+        // Searching broke the proxy without breaking the rule: a query and a
+        // result number are both inputs, and neither can alter anything —
+        // one becomes a query string sent to a search API, the other picks a
+        // row out of a list Rust already holds. Listing them keeps the guard
+        // meaningful instead of deleting it because it became inconvenient.
+        const READ_TOOLS_WITH_INPUT: &[&str] = &["web_search", "read_search_result"];
+
         for spec in CATALOG.iter().filter(|s| s.risk == Risk::Read) {
+            if READ_TOOLS_WITH_INPUT.contains(&spec.name) {
+                continue;
+            }
             assert!(
                 spec.params.is_empty(),
                 "read-only tool '{}' takes parameters; if it needs input it is \
-                 probably not read-only",
+                 probably not read-only. If it genuinely is, add it to \
+                 READ_TOOLS_WITH_INPUT above and say why.",
                 spec.name
             );
         }

@@ -148,6 +148,8 @@ export interface ChatRequest {
   tools: string[];
   /** Applications `open_app` may launch. */
   appAllowlist: string[];
+  /** Programmable Search engine id (`cx`). Public; the key is not sent. */
+  searchEngineId: string;
 }
 
 /** One entry in the tool catalog. Mirrors the Rust `ToolSpec`. */
