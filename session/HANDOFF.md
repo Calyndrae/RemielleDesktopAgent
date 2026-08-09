@@ -279,18 +279,25 @@ already exists and is tested.
 
 Do not ship a hardcoded greeting. The whole point is that it is hers.
 
-### 5.3 Slash command palette
+### ~~5.3 Slash command palette~~ — done, 2026-08-10
 
-`/emote change <name>` with **hover-preview at the character's position** —
-the assets are in now, so the preview has something real to show. Also
-`/tools`, `/model`, `/new`, `/save`, `/help`. Nothing exists yet.
+`/emote` with hover-preview lives in the composer: "/" turns the draft into a
+command line, hovering a pose plays it on the real sprite at her position, and
+closing without committing restores what she was doing. Also `/model`, `/new`,
+`/save`, `/help`. `/tools` was dropped — the tool switches are consent, and
+consent lives in Settings, not in a place a stray keystroke can reach.
 
-### 5.4 Agentic search for providers without native search
+### ~~5.4 Agentic search~~ — done, then rebuilt, 2026-08-10
 
-DeepSeek and most OpenAI-compatible servers have no built-in web search. The
-plan the user designed: AI emits a query → app searches → **hands the result
-list back to the AI to pick links** → app fetches and extracts → answers.
-Needs a Google Programmable Search key, which **the user must obtain**.
+Shipped first as two model-driven catalog tools and failed its first real use
+three ways at once (see the commit "Search the way CyreneExtension does it").
+Now: a router call decides if the message needs the web and compresses it to a
+query, the app searches keyless backends (Wikipedia, DuckDuckGo IA, GDELT +
+Google News RSS for news), and results are injected as context with a citation
+rule. No second API key required; a Google Programmable Search key is an
+optional full-web upgrade that is verified at save time and falls back to the
+builtin path on failure. The model never drives search tools — that is the
+lesson, and the reference implementation was the user's own CyreneExtension.
 
 ### 5.5 Context profile
 
