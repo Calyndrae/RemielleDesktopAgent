@@ -37,9 +37,8 @@ use tauri::Runtime;
 /// her — which is the right order for a companion.
 const ABOVE_FULLSCREEN: NSWindowLevel = 25;
 
-/// The level a normal floating window sits at, for when the user turns the
-/// setting off again.
-const FLOATING: NSWindowLevel = 3;
+/// An ordinary window, for when the user turns the setting off.
+const NORMAL: NSWindowLevel = 0;
 
 /// Borrows the `NSWindow` behind a Tauri window.
 ///
@@ -60,27 +59,58 @@ fn ns_window<R: Runtime>(window: &tauri::WebviewWindow<R>) -> Option<Retained<NS
 /// Makes the overlay sit above fullscreen Spaces, or stop doing so.
 ///
 /// Safe to call repeatedly and from any state; it only ever sets values.
+///
+/// ## Why tao is not allowed anywhere near this window's level
+///
+/// Diagnosed with `CGWindowListCopyWindowInfo`, which kept reporting layer 5
+/// while `NSWindow.level` read back 25, and the two together name the culprit:
+///
+/// tao's `NSWindowLevel` enum assigns the *CGWindowLevelKey indices* as
+/// levels — `NSFloatingWindowLevel = kCGFloatingWindowLevelKey = 5` — so its
+/// always-on-top writes a nonsense level 5 (real floating is 3; 5 merely
+/// happens to also float, which is why nobody upstream has noticed). Worse,
+/// it writes it through `set_level_async`, a main-queue `exec_async`. A Tauri
+/// command already runs on the main thread, so `run_on_main_thread` executes
+/// our 25 *inline*, the readback smiles — and tao's queued 5 lands afterwards
+/// and quietly wins. The window floats over Finder and hides behind every
+/// fullscreen Space, with the tick on.
+///
+/// So the caller must not invoke Tauri's `set_always_on_top` on macOS at all.
+/// This function owns the level in both directions — 25 on, 0 off — and the
+/// queue hop below is ordering hygiene for callers that arrive off-main.
 pub fn set_above_fullscreen<R: Runtime>(window: &tauri::WebviewWindow<R>, on: bool) {
-    let Some(ns) = ns_window(window) else {
-        return;
-    };
+    let handle = window.clone();
+    let result = window.run_on_main_thread(move || {
+        let Some(ns) = ns_window(&handle) else {
+            return;
+        };
 
-    // Both are plain setters on a live NSWindow. They must run on the main
-    // thread, which is where Tauri dispatches command handlers and setup.
-    ns.setLevel(if on { ABOVE_FULLSCREEN } else { FLOATING });
+        ns.setLevel(if on { ABOVE_FULLSCREEN } else { NORMAL });
 
-    let behaviour = if on {
-        // Follow the user between Spaces, and be allowed over a fullscreen one.
-        // Without `FullScreenAuxiliary` the level above is ignored and she is
-        // covered anyway — the two flags are not alternatives.
-        NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::FullScreenAuxiliary
-            // Keeps her out of Mission Control's window grid. She is not a
-            // document the user is switching between.
-            | NSWindowCollectionBehavior::Stationary
-            | NSWindowCollectionBehavior::IgnoresCycle
-    } else {
-        NSWindowCollectionBehavior::Default
-    };
-    ns.setCollectionBehavior(behaviour);
+        let behaviour = if on {
+            // Follow the user between Spaces, and be allowed over a fullscreen
+            // one. Without `FullScreenAuxiliary` the level above is ignored and
+            // she is covered anyway — the two flags are not alternatives.
+            NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::FullScreenAuxiliary
+                // Keeps her out of Mission Control's window grid. She is not a
+                // document the user is switching between.
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::IgnoresCycle
+        } else {
+            NSWindowCollectionBehavior::Default
+        };
+        ns.setCollectionBehavior(behaviour);
+
+        // Read back rather than trusted. This exact write was once silently
+        // losing a race, and the readback in the log is what proves it stuck.
+        log::info!(
+            "window level asked={} readback={}",
+            if on { ABOVE_FULLSCREEN } else { NORMAL },
+            ns.level()
+        );
+    });
+    if result.is_err() {
+        log::warn!("could not queue window-level change to the main thread");
+    }
 }

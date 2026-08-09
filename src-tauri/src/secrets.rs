@@ -133,8 +133,22 @@ pub(crate) fn read(account: &str) -> Result<String, SecretError> {
 // ---------------------------------------------------------------------------
 
 /// Stores a key, replacing any existing one for the same account.
+/*
+ * Every command here is `async`, and not because anything awaits.
+ *
+ * In Tauri, a sync command runs on the main thread; an async one runs on the
+ * runtime's pool. These commands call the macOS Keychain, and the Keychain is
+ * allowed to put up a password prompt — it does so for every stored item the
+ * moment the app's code signature changes, which is every ad-hoc rebuild and
+ * every update. Sync, that prompt parks the main thread: the boot-time
+ * `has_key` sweep wedged it two commands deep, every queued command behind it
+ * starved — `overlay_ready` included — and the app sat invisible behind a
+ * modal, photographed mid-crime. Async, the prompts pend on a worker while she
+ * boots, places and shows; the answers arrive whenever the user types their
+ * password.
+ */
 #[tauri::command]
-pub fn store_key(account: String, key: String) -> Result<(), SecretError> {
+pub async fn store_key(account: String, key: String) -> Result<(), SecretError> {
     let trimmed = key.trim();
     if trimmed.is_empty() {
         return Err(SecretError::Empty);
@@ -145,12 +159,12 @@ pub fn store_key(account: String, key: String) -> Result<(), SecretError> {
 /// Whether a key is stored. This is the *only* thing the UI can learn about a
 /// key's content.
 #[tauri::command]
-pub fn has_key(account: String) -> bool {
+pub async fn has_key(account: String) -> bool {
     store::get(&account).is_ok()
 }
 
 #[tauri::command]
-pub fn delete_key(account: String) -> Result<(), SecretError> {
+pub async fn delete_key(account: String) -> Result<(), SecretError> {
     store::delete(&account)
 }
 
@@ -159,7 +173,7 @@ pub fn delete_key(account: String) -> Result<(), SecretError> {
 /// Enough to tell two keys apart when several accounts are configured, and not
 /// enough to reconstruct one.
 #[tauri::command]
-pub fn key_hint(account: String) -> Option<String> {
+pub async fn key_hint(account: String) -> Option<String> {
     let key = store::get(&account).ok()?;
     Some(mask(&key))
 }
@@ -180,43 +194,53 @@ fn mask(key: &str) -> String {
 mod tests {
     use super::*;
 
+    /// The commands went async to keep Keychain prompts off the main thread;
+    /// the tests still exercise them synchronously through a local runtime.
+    fn wait<F: std::future::Future>(future: F) -> F::Output {
+        tauri::async_runtime::block_on(future)
+    }
+
     #[test]
     fn stores_and_reports_presence_without_revealing() {
         let account = "test-store-presence";
-        let _ = delete_key(account.to_string());
+        let _ = wait(delete_key(account.to_string()));
 
-        assert!(!has_key(account.to_string()));
-        store_key(account.to_string(), "sk-abcdefghijklmnop".into()).unwrap();
-        assert!(has_key(account.to_string()));
+        assert!(!wait(has_key(account.to_string())));
+        wait(store_key(account.to_string(), "sk-abcdefghijklmnop".into())).unwrap();
+        assert!(wait(has_key(account.to_string())));
 
         // The hint must not contain the middle of the key.
-        let hint = key_hint(account.to_string()).unwrap();
+        let hint = wait(key_hint(account.to_string())).unwrap();
         assert!(!hint.contains("defghijklm"), "hint leaked key body: {hint}");
         assert!(hint.starts_with("sk-"));
         assert!(hint.ends_with("mnop"));
 
-        delete_key(account.to_string()).unwrap();
-        assert!(!has_key(account.to_string()));
+        wait(delete_key(account.to_string())).unwrap();
+        assert!(!wait(has_key(account.to_string())));
     }
 
     #[test]
     fn trims_surrounding_whitespace() {
         // Pasting from a terminal or a web page routinely carries a newline.
         let account = "test-store-trim";
-        let _ = delete_key(account.to_string());
-        store_key(account.to_string(), "  sk-paddedkey12345  \n".into()).unwrap();
+        let _ = wait(delete_key(account.to_string()));
+        wait(store_key(
+            account.to_string(),
+            "  sk-paddedkey12345  \n".into(),
+        ))
+        .unwrap();
         assert_eq!(read(account).unwrap(), "sk-paddedkey12345");
-        delete_key(account.to_string()).unwrap();
+        wait(delete_key(account.to_string())).unwrap();
     }
 
     #[test]
     fn rejects_empty_and_whitespace_only_keys() {
         assert!(matches!(
-            store_key("test-empty".into(), "   ".into()),
+            wait(store_key("test-empty".into(), "   ".into())),
             Err(SecretError::Empty)
         ));
         assert!(matches!(
-            store_key("test-empty".into(), String::new()),
+            wait(store_key("test-empty".into(), String::new())),
             Err(SecretError::Empty)
         ));
     }
@@ -224,7 +248,7 @@ mod tests {
     #[test]
     fn deleting_a_missing_key_succeeds() {
         // Idempotent: the caller wants "no key stored", which is already true.
-        assert!(delete_key("test-never-existed".into()).is_ok());
+        assert!(wait(delete_key("test-never-existed".into())).is_ok());
     }
 
     #[test]

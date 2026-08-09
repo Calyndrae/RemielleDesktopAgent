@@ -143,7 +143,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       hydrated: true,
     });
 
-    await get().refreshConfigured();
+    /*
+     * Deliberately NOT awaited, and the reason is a photograph: has_key hits
+     * the macOS Keychain, and when the app's code signature changes (every
+     * ad-hoc rebuild, every update) the Keychain raises a password prompt per
+     * stored item. Awaiting this meant the entire boot — placement, show,
+     * everything — sat frozen behind a modal until the user typed a password.
+     * She appears first; the "configured" ticks arrive whenever the Keychain
+     * answers, and the UI reads as unconfigured in the meantime, which is
+     * true.
+     */
+    void get().refreshConfigured();
   },
 
   refreshConfigured: async () => {

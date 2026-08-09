@@ -181,6 +181,12 @@ pub fn recover_if_stranded<R: Runtime>(
 /// platform-specific half to be forgotten by whoever calls it next.
 #[tauri::command]
 pub fn set_overlay_on_top<R: Runtime>(window: WebviewWindow<R>, on: bool) -> Result<(), String> {
+    // On macOS, deliberately NOT Tauri's `set_always_on_top`: tao's version
+    // writes a wrong level (5, a key index mistaken for a level) through an
+    // async queue that lands after ours and undoes it. The platform call owns
+    // the level outright in both directions. See platform/macos.rs for the
+    // full autopsy.
+    #[cfg(not(target_os = "macos"))]
     window.set_always_on_top(on).map_err(|e| e.to_string())?;
     crate::platform::set_above_fullscreen(&window, on);
     Ok(())
@@ -199,7 +205,9 @@ pub fn recentre_overlay<R: Runtime>(window: WebviewWindow<R>) -> Result<OverlayG
 /// default 800x600 size in the middle of the screen before placement runs.
 #[tauri::command]
 pub fn overlay_ready<R: Runtime>(window: WebviewWindow<R>) -> Result<OverlayGeometry, String> {
+    log::info!("overlay_ready: begin");
     let geometry = place_on_work_area(&window).map_err(|e| e.to_string())?;
+    log::info!("overlay_ready: placed, showing");
     window.show().map_err(|e| e.to_string())?;
 
     // Only now is it safe to enable passthrough: on GTK the underlying window
