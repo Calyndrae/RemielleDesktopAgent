@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { ipc, type ProviderInfo } from "@/lib/ipc";
 import { readSetting, writeSetting } from "@/lib/persist";
 import type { PanelTheme } from "@/lib/theme";
+import { EMPTY_PROFILE, type UserProfile } from "@/lib/profile";
 
 const STORAGE_KEY = "ai.config";
 
@@ -73,6 +74,8 @@ export interface AiConfig {
    * store like every other key and never enters this file.
    */
   searchEngineId: string;
+  /** The "about you" block, per-field opt-in. See lib/profile.ts. */
+  profile: UserProfile;
 }
 
 const DEFAULTS: AiConfig = {
@@ -96,6 +99,7 @@ const DEFAULTS: AiConfig = {
   panelTheme: "auto",
   appAllowlist: [],
   searchEngineId: "",
+  profile: EMPTY_PROFILE,
 };
 
 interface ConfigStore extends AiConfig {
@@ -139,6 +143,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
           : DEFAULTS.panelTheme,
       appAllowlist: Array.isArray(stored.appAllowlist) ? stored.appAllowlist : [],
       searchEngineId: stored.searchEngineId ?? DEFAULTS.searchEngineId,
+      profile: { ...EMPTY_PROFILE, ...(stored.profile ?? {}) },
       providers,
       hydrated: true,
     });
@@ -187,6 +192,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       appAllowlist,
       panelTheme,
       searchEngineId,
+      profile,
     } = get();
     void writeSetting<AiConfig>(STORAGE_KEY, {
       provider,
@@ -200,6 +206,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       appAllowlist,
       panelTheme,
       searchEngineId,
+      profile,
     });
   },
 }));

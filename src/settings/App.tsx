@@ -11,6 +11,7 @@ import {
 } from "@/lib/ipc";
 import { ambientBlock, formatMinute, parseMinute } from "@/lib/ambient";
 import { readAutostart, setAutostart } from "@/lib/autostart";
+import { composeProfileBlock, MAX_ABOUT_CHARS } from "@/lib/profile";
 import { clearLastSession } from "@/lib/lastSession";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbientStore } from "@/state/ambient";
@@ -526,6 +527,90 @@ export function SettingsApp() {
             )}
           </div>
         )}
+
+        <div className="field">
+          <span className="field__label">关于你（可选）</span>
+          <span className="field__hint">
+            每一项都有自己的开关，关着就一个字都不会发。下面的预览就是发出去的原文 ——
+            她对你的了解，以读得到的文字为准，不用猜。
+          </span>
+
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={config.profile.callMeOn}
+              onChange={(event) =>
+                useConfigStore.getState().patch({
+                  profile: { ...config.profile, callMeOn: event.target.checked },
+                })
+              }
+            />
+            <span>告诉她怎么称呼你</span>
+          </label>
+          <input
+            className="control"
+            type="text"
+            placeholder="想让她怎么叫你"
+            value={config.profile.callMe}
+            onChange={(event) =>
+              useConfigStore.getState().patch({
+                profile: { ...config.profile, callMe: event.target.value },
+              })
+            }
+          />
+
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={config.profile.timezoneOn}
+              onChange={(event) =>
+                useConfigStore.getState().patch({
+                  profile: { ...config.profile, timezoneOn: event.target.checked },
+                })
+              }
+            />
+            <span>告诉她你的时区</span>
+          </label>
+
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={config.profile.aboutOn}
+              onChange={(event) =>
+                useConfigStore.getState().patch({
+                  profile: { ...config.profile, aboutOn: event.target.checked },
+                })
+              }
+            />
+            <span>再补充一点背景</span>
+          </label>
+          <textarea
+            className="control control--area"
+            rows={3}
+            maxLength={MAX_ABOUT_CHARS}
+            placeholder="职业、爱好、正在忙什么……写你愿意让她知道的"
+            value={config.profile.about}
+            onChange={(event) =>
+              useConfigStore.getState().patch({
+                profile: { ...config.profile, about: event.target.value },
+              })
+            }
+          />
+
+          {/*
+            The live preview is the whole point of this section: the exact
+            bytes, or an explicit "nothing". Sessions here are short, so what
+            gets re-sent every time deserves to be inspectable every time.
+          */}
+          <span className="field__hint">
+            {composeProfileBlock(config.profile)
+              ? "每次新消息都会附上这段："
+              : "现在这一节什么都不会发送。"}
+          </span>
+          {composeProfileBlock(config.profile) && (
+            <pre className="profile-preview">{composeProfileBlock(config.profile)}</pre>
+          )}
+        </div>
 
         <label className="field">
           <span className="field__label">说话方式</span>

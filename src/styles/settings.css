@@ -384,3 +384,21 @@ body {
     box-shadow: none;
   }
 }
+
+/*
+ * The profile preview: exactly what will be sent, styled as evidence rather
+ * than prose. Monospace and sunken so it reads as "the actual bytes", the same
+ * register a key hint or a log line uses.
+ */
+.profile-preview {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: var(--sunken, rgba(127, 127, 127, 0.12));
+  border-radius: var(--r-small);
+  color: var(--text-muted);
+  font-family: "Cascadia Mono", "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

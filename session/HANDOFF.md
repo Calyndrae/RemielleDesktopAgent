@@ -299,11 +299,14 @@ optional full-web upgrade that is verified at save time and falls back to the
 builtin path on failure. The model never drives search tools — that is the
 lesson, and the reference implementation was the user's own CyreneExtension.
 
-### 5.5 Context profile
+### ~~5.5 Context profile~~ — done, 2026-08-10
 
-An "about you" local file (name, timezone, preferences) injected into each new
-chat, with per-field toggles and a **live preview of exactly what gets sent**.
-This matters more than usual because sessions are short.
+设置 → 角色 → 关于你: call-me, timezone (derived, never typed) and a capped
+free-text field, each behind its own toggle, composed fresh at send time and
+appended to the system prompt. The settings screen shows the exact block that
+will be sent — the same `composeProfileBlock` output, byte for byte — or an
+explicit "现在这一节什么都不会发送。" A filled field with its toggle off sends
+nothing: the toggle is the consent, not the text box.
 
 ---
 

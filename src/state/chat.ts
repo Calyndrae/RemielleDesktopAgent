@@ -11,6 +11,7 @@ import {
 } from "@/lib/ipc";
 import { cancelPendingState, restingState, useAgentStore } from "./agent";
 import { clearLastSession, saveLastSession } from "@/lib/lastSession";
+import { composeProfileBlock } from "@/lib/profile";
 import { useConfigStore } from "./config";
 
 /** Hard cap on a single user message. */
@@ -193,7 +194,16 @@ function beginReply(set: SetState, get: () => ChatStore): void {
       baseUrl: config.baseUrl.trim() || null,
       model: config.model,
       messages: history,
-      system: config.systemPrompt.trim() || null,
+      /*
+       * The profile rides with the voice prompt, composed fresh each send.
+       * Composed, not stored: what she is told tracks the toggles as they are
+       * *now*, and switching a field off takes effect on the very next message
+       * with nothing cached anywhere to say otherwise.
+       */
+      system:
+        [config.systemPrompt.trim(), composeProfileBlock(config.profile)]
+          .filter(Boolean)
+          .join("\n\n") || null,
       temperature: config.temperature,
       /*
        * One flag, read by Rust in two ways: a provider with native search gets
