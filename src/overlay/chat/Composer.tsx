@@ -1,9 +1,11 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { usePackStore } from "@/state/packHolder";
 
 import { exportFilename, exportSession } from "@/lib/exportSession";
 import { copyText, saveText } from "@/lib/saveText";
 import { COUNTER_THRESHOLD, MAX_INPUT_LENGTH, useChatStore } from "@/state/chat";
 import { currentProvider, searchAvailable, useConfigStore } from "@/state/config";
+import { ambientEmotePool, useAgentStore } from "@/state/agent";
 import { ipc } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
@@ -34,6 +36,21 @@ export function Composer() {
   const [modelMenu, setModelMenu] = useState<{ x: number; y: number } | null>(null);
   const [models, setModels] = useState<string[] | null>(null);
 
+  /*
+   * The slash palette.
+   *
+   * Typing "/" as the first character turns the draft into a command line and
+   * puts a menu of everything she can be told to do above the composer. It is
+   * driven by the draft itself rather than by separate state, so there is no
+   * mode to get stuck in: delete the slash and it is a message again.
+   *
+   * `emotePreview` remembers what she was doing before a hover started playing
+   * poses, so closing the palette without choosing puts her back rather than
+   * leaving her stuck in whatever the pointer last brushed.
+   */
+  const [slashLevel, setSlashLevel] = useState<"root" | "emote">("root");
+  const emotePreview = useRef<string | null>(null);
+
   const draft = useChatStore((s) => s.draft);
   const streaming = useChatStore((s) => s.streaming);
   const messages = useChatStore((s) => s.messages);
@@ -58,7 +75,17 @@ export function Composer() {
     // left alone, or committing a Chinese candidate would send the message.
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
+      // A draft that starts with "/" is a command, and Enter runs the first
+      // match rather than sending the model a string that was never a message.
+      if (slashQuery !== null) {
+        const first = slashItems.find((item) => !item.disabled);
+        if (first) first.onSelect();
+        return;
+      }
       useChatStore.getState().send();
+    }
+    if (event.key === "Escape" && slashQuery !== null) {
+      closeSlash();
     }
   };
 
@@ -120,6 +147,123 @@ export function Composer() {
             onSelect: () => void openSettings(),
           },
         ];
+
+  /*
+   * "/" at the start of the draft is a command, and the palette is the menu of
+   * them. Filtering happens live against what has been typed after the slash,
+   * so "/em" is already just the emote entry.
+   */
+  const slashQuery = draft.startsWith("/") ? draft.slice(1).toLowerCase() : null;
+  const pack = usePackStore((s) => s.pack);
+
+  const closeSlash = () => {
+    useChatStore.getState().setDraft("");
+    setSlashLevel("root");
+    // A hover preview that was never committed gets taken back off her.
+    if (emotePreview.current !== null) {
+      useAgentStore.getState().setEmoteOverride(emotePreview.current || null);
+      emotePreview.current = null;
+    }
+  };
+
+  const slashRootItems: MenuItem[] = [
+    {
+      id: "cmd-emote",
+      label: "/emote — 换个动作（悬停试穿）",
+      disabled: !pack || ambientEmotePool(pack).length === 0,
+      onSelect: () => {
+        // Selecting descends instead of closing; the menu re-renders with the
+        // pose list. Remember what she was doing first, for the take-back.
+        emotePreview.current = useAgentStore.getState().emoteOverride ?? "";
+        setSlashLevel("emote");
+        useChatStore.getState().setDraft("/emote ");
+      },
+    },
+    {
+      id: "cmd-model",
+      label: "/model — 换个模型",
+      onSelect: () => {
+        closeSlash();
+        const box = modelRef.current?.getBoundingClientRect();
+        if (box) setModelMenu({ x: box.left, y: box.top - 6 });
+        setModels(null);
+        const { provider, baseUrl } = useConfigStore.getState();
+        void ipc
+          .listModels(provider, baseUrl.trim() || null)
+          .then(setModels)
+          .catch(() => setModels([]));
+      },
+    },
+    {
+      id: "cmd-new",
+      label: "/new — 开始新对话",
+      disabled: messages.length === 0,
+      onSelect: () => {
+        closeSlash();
+        useChatStore.getState().reset();
+      },
+    },
+    {
+      id: "cmd-save",
+      label: "/save — 导出 JSON 存档",
+      disabled: !hasTranscript,
+      onSelect: () => {
+        closeSlash();
+        const text = exportSession(messages, {
+          ...exportOptions(),
+          format: "json",
+          includeReasoning: true,
+        });
+        void saveText(exportFilename("json"), text).then((ok) => {
+          if (ok) flash("已导出");
+        });
+      },
+    },
+    {
+      id: "cmd-help",
+      label: "/help — 这些命令都是什么",
+      onSelect: () => {
+        closeSlash();
+        flash("/emote 换动作 · /model 换模型 · /new 新对话 · /save 导出");
+      },
+    },
+  ].filter((item) => {
+    if (!slashQuery) return true;
+    return item.label.slice(1).toLowerCase().startsWith(slashQuery.split(" ")[0] ?? "");
+  });
+
+  const slashEmoteItems: MenuItem[] = pack
+    ? [
+        ...ambientEmotePool(pack).map((animation) => ({
+          id: `emote-${animation.id}`,
+          label: animation.label["zh-CN"] ?? animation.label["en"] ?? animation.id,
+          checked: useAgentStore.getState().emoteOverride === animation.id,
+          // The hover preview IS the feature: she tries the pose on, at her
+          // own position, at full size. A thumbnail could not compete.
+          onHover: () => useAgentStore.getState().setEmoteOverride(animation.id),
+          onSelect: () => {
+            // Committed: the preview becomes the choice, nothing to take back.
+            useAgentStore.getState().setEmoteOverride(animation.id);
+            emotePreview.current = null;
+            useChatStore.getState().setDraft("");
+            setSlashLevel("root");
+          },
+        })),
+        {
+          id: "emote-reset",
+          label: "恢复默认动作",
+          onHover: () => useAgentStore.getState().setEmoteOverride(null),
+          onSelect: () => {
+            useAgentStore.getState().setEmoteOverride(null);
+            emotePreview.current = null;
+            useChatStore.getState().setDraft("");
+            setSlashLevel("root");
+          },
+        },
+      ]
+    : [];
+
+  const slashItems = slashLevel === "emote" ? slashEmoteItems : slashRootItems;
 
   const menuItems: MenuItem[] = [
     {
@@ -325,6 +469,17 @@ export function Composer() {
           regionId="composer-menu"
           items={menuItems}
           onClose={() => setMenu(null)}
+        />
+      )}
+
+      {slashQuery !== null && slashItems.length > 0 && (
+        <ContextMenu
+          x={textareaRef.current?.getBoundingClientRect().left ?? 0}
+          y={(textareaRef.current?.getBoundingClientRect().top ?? 0) - 6}
+          above
+          regionId="slash-palette"
+          items={slashItems}
+          onClose={closeSlash}
         />
       )}
 

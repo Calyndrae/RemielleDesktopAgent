@@ -8,6 +8,7 @@ import { ambientEmotePool, useAgentStore } from "@/state/agent";
 import { attachChatEvents, useChatStore } from "@/state/chat";
 import { useConfigStore } from "@/state/config";
 import { useAmbientStore } from "@/state/ambient";
+import { usePackStore } from "@/state/packHolder";
 import { useSpriteStore } from "@/state/sprite";
 import { attachSettingsSync } from "@/state/sync";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
@@ -72,7 +73,11 @@ export function App() {
         .setOverlayOnTop(useSpriteStore.getState().alwaysOnTop)
         .catch(() => {});
 
-      setPack(await ipc.loadPack(DEFAULT_PACK_ID));
+      const loaded = await ipc.loadPack(DEFAULT_PACK_ID);
+      setPack(loaded);
+      // Mirrored into the holder so the composer's slash palette can list her
+      // animations without the pack being threaded through as a prop.
+      usePackStore.getState().setPack(loaded);
     } catch (cause) {
       setError(String(cause));
     }

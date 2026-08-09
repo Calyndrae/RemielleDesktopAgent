@@ -12,6 +12,12 @@ export interface MenuItem {
   /** Shown but unselectable — e.g. "export" with nothing yet to export. */
   disabled?: boolean;
   onSelect: () => void;
+  /**
+   * Fired when the pointer settles on the item. Exists for the emote palette,
+   * where the preview *is* the character trying the pose on — no thumbnail
+   * could compete with the real sprite doing the real animation.
+   */
+  onHover?: () => void;
 }
 
 interface ContextMenuProps {
@@ -111,6 +117,7 @@ export function ContextMenu({
           role="menuitem"
           className={`menu__item${item.danger ? " menu__item--danger" : ""}`}
           disabled={item.disabled ?? false}
+          onPointerEnter={item.onHover}
           onClick={() => {
             item.onSelect();
             onClose();
