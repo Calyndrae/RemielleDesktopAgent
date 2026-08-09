@@ -849,6 +849,43 @@ async fn run_stream<R: Runtime>(
         Protocol::Gemini => gemini_opening(&request),
     };
 
+    /*
+     * Search happens *before* the model speaks, not through it.
+     *
+     * The first version exposed search as two catalog tools and left the model
+     * to drive them: decide to call, format the call, read the list, pick a
+     * number, call again. Capable models manage; the small ones this app
+     * deliberately targets fumble at every one of those steps, and each fumble
+     * looks like a broken feature rather than a weak model.
+     *
+     * So the flow is now the one CyreneExtension proved out: a cheap router
+     * call decides whether this message needs the web at all and produces an
+     * optimised query, the app runs the search itself, and the results are
+     * injected into the request as context with a citation rule. The model
+     * never sees a tool, it just answers a question that happens to arrive
+     * with the relevant sources attached — which is why it works the same on
+     * every model, strong or weak.
+     *
+     * Failure at any step degrades to "answer without search", silently. The
+     * user asked a question, not for a status report on the pipeline.
+     */
+    if request.web_search
+        && !info.native_search
+        && matches!(info.protocol, Protocol::OpenAiCompatible)
+    {
+        preflight_search(
+            &app,
+            &stream_id,
+            &http,
+            &base,
+            key.as_deref(),
+            &request,
+            &mut messages,
+            &mut seen_tools,
+        )
+        .await;
+    }
+
     for round in 0..=MAX_TOOL_ROUNDS {
         // Tools are withheld on the last pass, so the model has to answer with
         // words rather than asking for a call that could never be honoured.
@@ -932,14 +969,6 @@ async fn run_stream<R: Runtime>(
                         summary: format!("你拒绝了「{label}」"),
                         ok: false,
                     }
-                }
-                // Two dispatchers, split by what they touch. `tools::dispatch`
-                // answers questions about this machine and is synchronous;
-                // search goes over the network, needs a key, and remembers its
-                // last results between calls. Making the whole dispatcher async
-                // for two tools would tax every local one.
-                _ if crate::search::handles(&call.name) => {
-                    crate::search::run(&app, call, &request.search_engine_id).await
                 }
                 _ => tools::dispatch::dispatch(call, &request.tools, &request.app_allowlist),
             };
@@ -1728,6 +1757,218 @@ mod wire_format {
 }
 
 // ---------------------------------------------------------------------------
+// Preflight web search
+// ---------------------------------------------------------------------------
+
+/// The router's brief: decide, and compress the question into a query.
+///
+/// Modelled directly on the router in CyreneExtension, which is where this
+/// whole flow was proven. The tags are the contract; everything else about the
+/// wording is just making a small model reliable at producing them.
+const ROUTER_BRIEF: &str = "You are a search query router. Decide whether the \
+user's latest message needs the internet.\n\
+- Needs current news or recent events: reply ONLY with <news>5 to 10 word query</news>\n\
+- Needs facts, definitions, or external knowledge you may not have: reply ONLY \
+with <search>5 to 10 word query</search>\n\
+- Anything else (chat, math, code, opinions about known things): reply EXACTLY \
+with <no_search>\n\
+The query may be in Chinese or English, whichever fits the topic better.";
+
+/// What the router decided.
+enum SearchPlan {
+    Skip,
+    Web(String),
+    News(String),
+}
+
+/// One cheap, non-streaming call to classify the message.
+///
+/// Any failure means `Skip`: a broken router must degrade to "no search", not
+/// to a broken conversation.
+async fn route_search(
+    http: &reqwest::Client,
+    base: &str,
+    key: Option<&str>,
+    model: &str,
+    user_text: &str,
+) -> SearchPlan {
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [
+            { "role": "system", "content": ROUTER_BRIEF },
+            { "role": "user", "content": user_text },
+        ],
+        "stream": false,
+        "temperature": 0.1,
+        "max_tokens": 60,
+    });
+
+    let mut builder = http.post(format!("{base}/chat/completions")).json(&body);
+    if let Some(key) = key {
+        builder = builder.bearer_auth(key);
+    }
+
+    let Ok(response) = builder.send().await else {
+        return SearchPlan::Skip;
+    };
+    let Ok(payload) = response.text().await else {
+        return SearchPlan::Skip;
+    };
+    let decision = serde_json::from_str::<serde_json::Value>(&payload)
+        .ok()
+        .and_then(|v| {
+            v["choices"][0]["message"]["content"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+
+    parse_route(&decision)
+}
+
+/// Pulls the tag out of whatever the router said around it.
+fn parse_route(decision: &str) -> SearchPlan {
+    let take = |open: &str, close: &str| -> Option<String> {
+        let start = decision.find(open)? + open.len();
+        let end = decision[start..].find(close)? + start;
+        let query = decision[start..end].trim();
+        (!query.is_empty()).then(|| query.to_string())
+    };
+    if let Some(query) = take("<news>", "</news>") {
+        return SearchPlan::News(query);
+    }
+    if let Some(query) = take("<search>", "</search>") {
+        return SearchPlan::Web(query);
+    }
+    SearchPlan::Skip
+}
+
+/// Runs the search and folds the results into the outgoing request.
+#[allow(clippy::too_many_arguments)]
+async fn preflight_search<R: Runtime>(
+    app: &AppHandle<R>,
+    stream_id: &str,
+    http: &reqwest::Client,
+    base: &str,
+    key: Option<&str>,
+    request: &ChatRequest,
+    messages: &mut [serde_json::Value],
+    seen_tools: &mut Vec<ToolActivity>,
+) {
+    // The router reads the latest user message, nothing else. History would
+    // only tempt it into searching for things already answered.
+    let Some(user_text) = request
+        .messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+    else {
+        return;
+    };
+
+    let plan = route_search(http, base, key, &request.model, &user_text).await;
+    let (query, kind) = match &plan {
+        SearchPlan::Skip => {
+            log::info!("preflight: router says no search");
+            return;
+        }
+        SearchPlan::Web(q) => (q.clone(), "web"),
+        SearchPlan::News(q) => (q.clone(), "news"),
+    };
+
+    // Shown in the transcript the moment the search starts, so "did she look
+    // this up?" never depends on trusting the wording of the answer.
+    emit_once(
+        app,
+        stream_id,
+        ToolActivity::Search {
+            query: query.clone(),
+        },
+        seen_tools,
+    );
+
+    let backend = match crate::secrets::read(crate::search::KEY_ACCOUNT) {
+        Ok(google_key) if !request.search_engine_id.trim().is_empty() => {
+            crate::search::Backend::Google {
+                key: google_key,
+                engine_id: request.search_engine_id.clone(),
+            }
+        }
+        _ => crate::search::Backend::Builtin,
+    };
+
+    let hits = match kind {
+        "news" => crate::search::search_news(&query).await,
+        _ => crate::search::search(&backend, &query).await,
+    }
+    .unwrap_or_default();
+
+    if hits.is_empty() {
+        log::info!(
+            "preflight ({kind}): no hits for {} chars",
+            query.chars().count()
+        );
+        return;
+    }
+    log::info!(
+        "preflight ({kind}): {} hits for {} chars",
+        hits.len(),
+        query.chars().count()
+    );
+
+    let mut block = String::new();
+    for (n, hit) in hits.iter().enumerate() {
+        block.push_str(&format!(
+            "{}. {}\nURL: {}\n{}\n\n",
+            n + 1,
+            hit.title,
+            hit.url,
+            hit.snippet
+        ));
+        emit_once(
+            app,
+            stream_id,
+            ToolActivity::Citation {
+                title: hit.title.clone(),
+                url: hit.url.clone(),
+            },
+            seen_tools,
+        );
+    }
+
+    // The top hit gets its actual text, not just a snippet. Deterministic --
+    // the first result, no model choosing -- and best-effort: snippets alone
+    // are still an answer's worth of context.
+    if let Some(top) = hits.first() {
+        if let Ok(text) = crate::search::fetch_extract(&top.url).await {
+            let excerpt: String = text.chars().take(3000).collect();
+            block.push_str(&format!("[第 1 条的正文节选]\n{excerpt}\n"));
+        }
+    }
+
+    // The citation rule rides on the system message. Same shape Cyrene uses:
+    // raw URL in brackets after the claim, so the user can check her.
+    if let Some(system) = messages.first_mut() {
+        if system["role"] == "system" {
+            let existing = system["content"].as_str().unwrap_or_default();
+            system["content"] = serde_json::json!(format!(
+                "{existing}\n\n[系统能力] 你现在拿到了实时搜索结果。回答时使用它们；\
+                 基于某条结果下结论时，必须在那句话后面用方括号标出它的原始 URL，\
+                 例如：天是蓝的 [https://example.com/sky]。不要说自己无法联网。"
+            ));
+        }
+    }
+
+    // And the results land right next to the question they answer.
+    if let Some(last_user) = messages.iter_mut().rev().find(|m| m["role"] == "user") {
+        let original = last_user["content"].as_str().unwrap_or_default();
+        last_user["content"] =
+            serde_json::json!(format!("[实时搜索结果]\n{block}\n[用户的问题]\n{original}"));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Unprompted lines
 // ---------------------------------------------------------------------------
 
@@ -1901,6 +2142,56 @@ pub fn tidy_ambient_line(raw: &str) -> String {
         return unquoted.to_string();
     }
     unquoted.chars().take(MAX_CHARS).collect::<String>() + "…"
+}
+
+#[cfg(test)]
+mod route_tests {
+    use super::*;
+
+    fn kind(plan: &SearchPlan) -> &'static str {
+        match plan {
+            SearchPlan::Skip => "skip",
+            SearchPlan::Web(_) => "web",
+            SearchPlan::News(_) => "news",
+        }
+    }
+
+    #[test]
+    fn the_three_tags_parse() {
+        assert_eq!(kind(&parse_route("<no_search>")), "skip");
+        assert_eq!(
+            kind(&parse_route("<search>rust borrow checker</search>")),
+            "web"
+        );
+        assert_eq!(
+            kind(&parse_route("<news>apple earnings today</news>")),
+            "news"
+        );
+    }
+
+    #[test]
+    fn chatter_around_the_tag_is_tolerated() {
+        // Small models editorialise. The tag is the contract; the prose is not.
+        let plan = parse_route(
+            "Sure! Here you go: <search>zenless zone zero release</search> Hope that helps.",
+        );
+        match plan {
+            SearchPlan::Web(q) => assert_eq!(q, "zenless zone zero release"),
+            _ => panic!("should have parsed the tag"),
+        }
+    }
+
+    #[test]
+    fn anything_unparseable_means_no_search() {
+        // A confused router must cost nothing. The worst it may do is answer
+        // without sources, never break the turn.
+        assert_eq!(kind(&parse_route("")), "skip");
+        assert_eq!(
+            kind(&parse_route("I think you should search for cats")),
+            "skip"
+        );
+        assert_eq!(kind(&parse_route("<search></search>")), "skip");
+    }
 }
 
 #[cfg(test)]

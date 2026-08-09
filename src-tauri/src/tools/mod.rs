@@ -186,52 +186,6 @@ pub const CATALOG: &[ToolSpec] = &[
         ],
     },
     ToolSpec {
-        name: "web_search",
-        description: "Search the web. Use when the answer depends on something \
-                      current, or on a fact you are not sure of. Returns a \
-                      numbered list of results; read one with \
-                      read_search_result before answering from it, because the \
-                      snippets alone are rarely enough.",
-        user_label: "联网搜索",
-        risk: Risk::Read,
-        platform: Platform::Any,
-        params: &[Param {
-            name: "query",
-            description: "What to search for, as you would type it into a \
-                          search box.",
-            required: true,
-            // The one free-text parameter in the catalog, and the exception is
-            // argued rather than assumed — see the note in
-            // `the_catalog_contains_no_free_form_execution`. It becomes a query
-            // parameter on an HTTPS GET and nothing else; there is no shell, no
-            // path, and no way for it to restructure the request.
-            kind: ParamKind::Text { max_len: 200 },
-        }],
-    },
-    ToolSpec {
-        name: "read_search_result",
-        description: "Open one of the results from your last web_search and \
-                      read its text. Give the result's number from that list.",
-        user_label: "打开搜索结果里的网页",
-        risk: Risk::Read,
-        platform: Platform::Any,
-        params: &[Param {
-            name: "index",
-            description: "Which result to open, counting from 1.",
-            required: true,
-            // An index, deliberately, and not a URL.
-            //
-            // A tool taking a URL would let the model name any address it can
-            // imagine or any address a page it just read suggested to it —
-            // localhost admin panels, cloud metadata endpoints, an attacker's
-            // callback. Constraining it to a position in the list the search
-            // engine returned means she chooses among real results and cannot
-            // invent a destination. Same rule as the enums elsewhere: choose,
-            // never compose.
-            kind: ParamKind::Integer { min: 1, max: 8 },
-        }],
-    },
-    ToolSpec {
         name: "security_scan",
         description: "Run a Microsoft Defender antivirus scan. A quick scan \
                       takes a few minutes; a full scan can take hours.",
@@ -531,7 +485,11 @@ mod tests {
         // companion tool deliberately does *not* take a URL — it takes an index
         // into the results this search returned, so the model can choose a
         // destination but never name one. See `search/mod.rs`.
-        const JUSTIFIED_FREE_TEXT: &[(&str, &str)] = &[("web_search", "query")];
+        // Empty again, and that is the healthy state. web_search.query lived
+        // here while search was a model-driven tool; search now runs before
+        // the request ever reaches the model (see llm::preflight_search), so
+        // no tool needs free text and the model composes nothing.
+        const JUSTIFIED_FREE_TEXT: &[(&str, &str)] = &[];
 
         for spec in CATALOG {
             for param in spec.params {
@@ -769,7 +727,9 @@ mod tests {
         // one becomes a query string sent to a search API, the other picks a
         // row out of a list Rust already holds. Listing them keeps the guard
         // meaningful instead of deleting it because it became inconvenient.
-        const READ_TOOLS_WITH_INPUT: &[&str] = &["web_search", "read_search_result"];
+        // Empty since search stopped being a tool. The mechanism stays for the
+        // next genuinely read-only tool that needs an input.
+        const READ_TOOLS_WITH_INPUT: &[&str] = &[];
 
         for spec in CATALOG.iter().filter(|s| s.risk == Risk::Read) {
             if READ_TOOLS_WITH_INPUT.contains(&spec.name) {

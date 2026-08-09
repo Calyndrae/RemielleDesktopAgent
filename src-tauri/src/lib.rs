@@ -77,7 +77,6 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .manage(PassthroughState::default())
         .manage(window::tray::TrayState::<tauri::Wry>::default())
-        .manage(search::SearchState::default())
         .manage(llm::StreamRegistry::default())
         .manage(llm::ConfirmRegistry::default())
         .invoke_handler(tauri::generate_handler![
@@ -106,6 +105,7 @@ pub fn run() {
             llm::verify_key,
             llm::list_models,
             llm::ambient_line,
+            search::verify_search,
             quit_app,
         ])
         .setup(|app| {

@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import { ipc, type OverlayGeometry } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
-import { useAgentStore } from "@/state/agent";
+import { ambientEmotePool, useAgentStore } from "@/state/agent";
 import { attachChatEvents, useChatStore } from "@/state/chat";
 import { useConfigStore } from "@/state/config";
 import { useAmbientStore } from "@/state/ambient";
@@ -63,6 +63,14 @@ export function App() {
       const geo = await ipc.overlayReady();
       setGeometry(geo);
       useSpriteStore.getState().setMonitor(geo.monitor);
+
+      // Re-assert the window level now that the window is actually shown.
+      // The effect below also applies it, but its first run can race
+      // `overlay_ready`, and the fullscreen behaviour is the one setting
+      // where "usually applied" reads as "broken sometimes".
+      void ipc
+        .setOverlayOnTop(useSpriteStore.getState().alwaysOnTop)
+        .catch(() => {});
 
       setPack(await ipc.loadPack(DEFAULT_PACK_ID));
     } catch (cause) {
@@ -177,15 +185,26 @@ export function App() {
     else chat.requestClose();
   }, []);
 
-  /** Steps through the pack's animations — a stand-in for `/emote change`. */
+  /** Steps through her real emotes — a stand-in for `/emote change`. */
   const cycleEmote = useCallback(() => {
     if (!pack) return;
-    const selectable = pack.animations.filter((animation) => animation.selectable);
-    if (selectable.length === 0) return;
+    /*
+     * The curated pool, not everything selectable.
+     *
+     * The raw list starts with `idle` — so the first click set her to the pose
+     * she was already in and looked like a dead menu item — and continues into
+     * `thinking` and the drawing poses, which mean "writing you a reply" and
+     * are exactly the lie the design rules forbid outside a conversation.
+     * `ambientEmotePool` already encodes both exclusions; this pool is the two
+     * (or however many the pack ships) genuine emotes, so every click is a
+     * visible change to a pose that means nothing it shouldn't.
+     */
+    const options = ambientEmotePool(pack);
+    if (options.length === 0) return;
 
     const { emoteOverride, setEmoteOverride } = useAgentStore.getState();
-    const index = selectable.findIndex((animation) => animation.id === emoteOverride);
-    setEmoteOverride(selectable[(index + 1) % selectable.length]!.id);
+    const index = options.findIndex((animation) => animation.id === emoteOverride);
+    setEmoteOverride(options[(index + 1) % options.length]!.id);
   }, [pack]);
 
   const menuItems: MenuItem[] = [

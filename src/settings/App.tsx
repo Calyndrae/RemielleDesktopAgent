@@ -58,6 +58,10 @@ export function SettingsApp() {
    */
   const [searchKeyInput, setSearchKeyInput] = useState("");
   const [searchKeyHint, setSearchKeyHint] = useState<string | null>(null);
+  /** Outcome of the save-time test query, shown inline where it can be acted on. */
+  const [searchKeyState, setSearchKeyState] = useState<
+    { status: "idle" } | { status: "verifying" } | { status: "ok" } | { status: "failed"; message: string }
+  >({ status: "idle" });
 
   const [keyInput, setKeyInput] = useState("");
   const [keyState, setKeyState] = useState<KeyState>({ status: "idle" });
@@ -105,11 +109,38 @@ export function SettingsApp() {
 
   const saveSearchKey = async () => {
     const key = searchKeyInput.trim();
+    const engineId = config.searchEngineId.trim();
     if (!key) return;
-    await ipc.storeKey(SEARCH_ACCOUNT, key);
-    await useConfigStore.getState().refreshConfigured();
-    setSearchKeyInput("");
-    setSearchKeyHint(await ipc.keyHint(SEARCH_ACCOUNT).catch(() => null));
+    if (!engineId) {
+      setSearchKeyState({ status: "failed", message: "先填搜索引擎 ID，两个要一起用" });
+      return;
+    }
+
+    /*
+     * Verified with a real query before it is stored, exactly like the model
+     * keys. The alternative was lived rather than imagined: a key whose Cloud
+     * project never had the Custom Search API enabled sat in the keychain and
+     * turned every mid-conversation search into a 403 — the one moment nobody
+     * can do anything about it. Here, the failure lands next to the form and
+     * the fix.
+     */
+    setSearchKeyState({ status: "verifying" });
+    try {
+      await ipc.verifySearch(key, engineId);
+      await ipc.storeKey(SEARCH_ACCOUNT, key);
+      await useConfigStore.getState().refreshConfigured();
+      setSearchKeyInput("");
+      setSearchKeyHint(await ipc.keyHint(SEARCH_ACCOUNT).catch(() => null));
+      setSearchKeyState({ status: "ok" });
+    } catch (error) {
+      const message = String(error);
+      setSearchKeyState({
+        status: "failed",
+        message: message.includes("Custom Search")
+          ? "这个密钥的 Google Cloud 项目还没启用 Custom Search JSON API —— 去控制台把它打开再试。没存这个密钥。"
+          : `试了一次搜索，失败了：${message} —— 没存这个密钥。`,
+      });
+    }
   };
 
   const removeSearchKey = async () => {
@@ -432,9 +463,10 @@ export function SettingsApp() {
             <span className="field__label">想让她搜全网？（可选）</span>
             <span className="field__hint">
               上面那个开关已经能用了，不填这里也不影响。
-              区别只是搜的范围：默认查维基百科和公开词条，填了这两项就是 Google 全网。
-              要去 Google Cloud 开 Custom Search API 拿密钥，再建一个搜索引擎拿 ID —— 
-              有点麻烦，所以做成可选的。密钥和其他密钥一样存在系统钥匙串里，不进网页层。
+              区别只是搜的范围：默认查维基百科、公开词条和新闻，填了这两项就是 Google 全网。
+              要去 Google Cloud 开 Custom Search JSON API 拿密钥，再建一个搜索引擎拿 ID ——
+              有点麻烦，所以做成可选的。就算这套哪天失效了，她也会自动退回默认那套，不会因此搜不了。
+              密钥和其他密钥一样存在系统钥匙串里，不进网页层。
             </span>
 
             <input
@@ -481,6 +513,17 @@ export function SettingsApp() {
                 去哪里拿这两个？
               </button>
             </div>
+            {searchKeyState.status === "verifying" && (
+              <span className="field__hint">正在试一次搜索…</span>
+            )}
+            {searchKeyState.status === "ok" && (
+              <span className="field__hint">好了，试了一次，能搜到东西。之后她会用全网搜索。</span>
+            )}
+            {searchKeyState.status === "failed" && (
+              <span className="field__hint" style={{ color: "var(--danger)" }}>
+                {searchKeyState.message}
+              </span>
+            )}
           </div>
         )}
 

@@ -11,7 +11,7 @@ import {
 } from "@/lib/ipc";
 import { cancelPendingState, restingState, useAgentStore } from "./agent";
 import { clearLastSession, saveLastSession } from "@/lib/lastSession";
-import { currentProvider, useConfigStore } from "./config";
+import { useConfigStore } from "./config";
 
 /** Hard cap on a single user message. */
 export const MAX_INPUT_LENGTH = 500;
@@ -187,11 +187,6 @@ function beginReply(set: SetState, get: () => ChatStore): void {
     .slice(-CONTEXT_TURNS)
     .map((m) => ({ role: m.role, content: messageText(m) }));
 
-  const info = currentProvider(config);
-  // No readiness check any more: the builtin backend needs nothing, so "she may
-  // search" and "she can search" are the same question again.
-  const useSearchTools = config.webSearch && !(info?.nativeSearch ?? false);
-
   void ipc
     .startChat(streamId, {
       provider: config.provider,
@@ -200,23 +195,14 @@ function beginReply(set: SetState, get: () => ChatStore): void {
       messages: history,
       system: config.systemPrompt.trim() || null,
       temperature: config.temperature,
-      // Our own search runs only where the provider has none of its own —
-      // asking a model to drive two search mechanisms in one turn gets one of
-      // them used badly.
-      // Never ask for search from a provider that has none: the request would
-      // be rejected outright.
-      webSearch: config.webSearch && (info?.nativeSearch ?? false),
       /*
-       * The search tools ride on the same switch the user already understands.
-       *
-       * They are deliberately not in the settings tool list: "may she look
-       * things up" is the 允许联网搜索 toggle, and having the same permission
-       * expressed twice, in two places that could disagree, is how a user ends
-       * up with a switch that does nothing. When search is on and the provider
-       * has none of its own, she gets the pair; otherwise she is never told
-       * they exist.
+       * One flag, read by Rust in two ways: a provider with native search gets
+       * its own mechanism switched on in the request body; everyone else gets
+       * the preflight — router, search, results injected as context. Which one
+       * runs is Rust's problem, not this file's.
        */
-      tools: useSearchTools ? [...config.tools, "web_search", "read_search_result"] : config.tools,
+      webSearch: config.webSearch,
+      tools: config.tools,
       appAllowlist: config.appAllowlist,
       searchEngineId: config.searchEngineId,
     })

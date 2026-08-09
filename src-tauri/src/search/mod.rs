@@ -46,8 +46,6 @@
 //! A Google key remains supported as an optional upgrade for anyone who wants
 //! full web coverage. It is an upgrade, not a prerequisite.
 
-use std::sync::Mutex;
-
 use serde::Serialize;
 
 /// Where the key lives in the OS credential store.
@@ -74,37 +72,6 @@ pub struct Hit {
     pub title: String,
     pub url: String,
     pub snippet: String,
-}
-
-/// The hits from the most recent search, so `read_search_result` has something
-/// to resolve an index against.
-///
-/// One list, not one per conversation: the index only ever refers to "the search
-/// you just did", and a stale list from an abandoned turn would be worse than
-/// no list, because an index into it would silently open the wrong page.
-#[derive(Default)]
-pub struct SearchState {
-    last: Mutex<Vec<Hit>>,
-}
-
-impl SearchState {
-    pub fn store(&self, hits: Vec<Hit>) {
-        *self.lock() = hits;
-    }
-
-    pub fn get(&self, index: usize) -> Option<Hit> {
-        // 1-based for the model: "result 1" is what a person would say, and a
-        // model that miscounts from zero would open the wrong page silently.
-        self.lock().get(index.checked_sub(1)?).cloned()
-    }
-
-    pub fn len(&self) -> usize {
-        self.lock().len()
-    }
-
-    fn lock(&self) -> std::sync::MutexGuard<'_, Vec<Hit>> {
-        self.last.lock().unwrap_or_else(|e| e.into_inner())
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -141,10 +108,166 @@ pub enum Backend {
 }
 
 /// Runs one search.
+///
+/// A failing Google backend falls back to the builtin one rather than
+/// surfacing its error. This is the fix for a very real afternoon: a stored
+/// key whose Cloud project never had the Custom Search API enabled made every
+/// single search die with a 403 — the keyless path that would have worked
+/// sat unused because credentials existed. An upgrade must never be able to
+/// make the product worse than not having it.
 pub async fn search(backend: &Backend, query: &str) -> Result<Vec<Hit>, SearchError> {
     match backend {
         Backend::Builtin => search_builtin(query).await,
-        Backend::Google { key, engine_id } => search_google(key, engine_id, query).await,
+        Backend::Google { key, engine_id } => match search_google(key, engine_id, query).await {
+            Ok(hits) => Ok(hits),
+            Err(error) => {
+                log::warn!("google search failed, falling back to builtin: {error}");
+                search_builtin(query).await
+            }
+        },
+    }
+}
+
+/// News, always keyless.
+///
+/// GDELT first — an API that exists precisely to be queried by programs, with
+/// coverage measured in minutes. It is weak on CJK queries, so those fall
+/// through to Google News' RSS feed, which that feed's own terms offer for
+/// personal, non-commercial use — which a fan-made desktop companion running
+/// on its owner's machine is.
+pub async fn search_news(query: &str) -> Result<Vec<Hit>, SearchError> {
+    let http = client()?;
+
+    if wiki_lang_for(query) == "en" {
+        if let Ok(response) = http
+            .get("https://api.gdeltproject.org/api/v2/doc/doc")
+            .query(&[
+                ("query", query),
+                ("mode", "artlist"),
+                ("maxrecords", "6"),
+                ("format", "json"),
+                ("sort", "datedesc"),
+            ])
+            .send()
+            .await
+        {
+            let body = response.text().await.unwrap_or_default();
+            let hits = parse_gdelt(&body);
+            if !hits.is_empty() {
+                return Ok(hits);
+            }
+        }
+    }
+
+    let (hl, gl, ceid) = if wiki_lang_for(query) == "zh" {
+        ("zh-CN", "CN", "CN:zh-Hans")
+    } else {
+        ("en-US", "US", "US:en")
+    };
+    let response = http
+        .get("https://news.google.com/rss/search")
+        .query(&[("q", query), ("hl", hl), ("gl", gl), ("ceid", ceid)])
+        .send()
+        .await
+        .map_err(|e| SearchError::Network(e.to_string()))?;
+    let body = response.text().await.unwrap_or_default();
+    Ok(parse_news_rss(&body))
+}
+
+/// GDELT's article list.
+pub fn parse_gdelt(body: &str) -> Vec<Hit> {
+    // GDELT reports errors as plain text rather than JSON; both that and an
+    // empty article list mean the same thing here — nothing to offer.
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    value["articles"]
+        .as_array()
+        .map(|articles| {
+            articles
+                .iter()
+                .filter_map(|article| {
+                    let url = article["url"].as_str()?.to_string();
+                    Some(Hit {
+                        title: article["title"].as_str().unwrap_or("(无标题)").to_string(),
+                        url,
+                        snippet: {
+                            // seendate is the only context GDELT gives beyond
+                            // the title; recency is the point of news.
+                            let seen = article["seendate"].as_str().unwrap_or_default();
+                            let domain = article["domain"].as_str().unwrap_or_default();
+                            format!("{domain} · {seen}")
+                        },
+                    })
+                })
+                .take(MAX_HITS)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Items out of an RSS feed, without an XML parser.
+///
+/// The same reasoning as `extract_text`: the job is a handful of titles and
+/// links out of a well-formed machine-generated feed, not modelling XML. A
+/// dependency for this would be a dependency for a regex.
+pub fn parse_news_rss(xml: &str) -> Vec<Hit> {
+    let mut hits = Vec::new();
+    let mut rest = xml;
+
+    while let Some(start) = rest.find("<item>") {
+        let Some(end) = rest[start..].find("</item>") else {
+            break;
+        };
+        let item = &rest[start..start + end];
+
+        let field = |tag: &str| -> Option<&str> {
+            let open = format!("<{tag}>");
+            let close = format!("</{tag}>");
+            let s = item.find(&open)? + open.len();
+            let e = item[s..].find(&close)? + s;
+            Some(item[s..e].trim())
+        };
+
+        // Titles arrive CDATA-wrapped or entity-escaped depending on feed mood.
+        let clean = |raw: &str| -> String {
+            let unwrapped = raw
+                .strip_prefix("<![CDATA[")
+                .and_then(|t| t.strip_suffix("]]>"))
+                .unwrap_or(raw);
+            decode_entities(unwrapped)
+        };
+
+        if let (Some(title), Some(link)) = (field("title"), field("link")) {
+            let url = clean(link);
+            if url.starts_with("http") {
+                hits.push(Hit {
+                    title: clean(title),
+                    url,
+                    snippet: field("pubDate").map(clean).unwrap_or_default(),
+                });
+            }
+        }
+        if hits.len() >= MAX_HITS {
+            break;
+        }
+        rest = &rest[start + end..];
+    }
+    hits
+}
+
+/// Save-time check for the optional Google credentials.
+///
+/// Provider keys are verified against the provider before they are stored, and
+/// the search key deserved the same courtesy all along: storing it unchecked is
+/// how a key whose project lacks the API sat in the keychain failing every
+/// search at the worst possible moment — mid-conversation — instead of the one
+/// moment the user was looking at a form and could act on it.
+#[tauri::command]
+pub async fn verify_search(key: String, engine_id: String) -> Result<usize, String> {
+    match search_google(&key, &engine_id, "hello").await {
+        Ok(hits) => Ok(hits.len()),
+        Err(error) => Err(error.to_string()),
     }
 }
 
@@ -513,182 +636,6 @@ fn decode_entities(text: &str) -> String {
         .replace("&hellip;", "…")
 }
 
-/// The result list as the model sees it.
-///
-/// Numbered, because the number is the only handle it gets — `read_search_result`
-/// takes an index and nothing else, so the list has to make the numbering
-/// impossible to misread.
-pub fn format_hits(hits: &[Hit]) -> String {
-    if hits.is_empty() {
-        return "No results.".into();
-    }
-    let mut out =
-        String::from("Results. To read one, call read_search_result with its number.\n\n");
-    for (n, hit) in hits.iter().enumerate() {
-        out.push_str(&format!(
-            "{}. {}\n   {}\n   {}\n",
-            n + 1,
-            hit.title,
-            hit.url,
-            hit.snippet
-        ));
-    }
-    out
-}
-
-// ---------------------------------------------------------------------------
-// Tool execution
-// ---------------------------------------------------------------------------
-
-/// Whether this call is one of the two network tools handled here.
-///
-/// Kept separate from `tools::dispatch` on purpose. Everything in that module
-/// is a synchronous question about *this machine*; these two are async, need a
-/// key, and hold state between calls. Threading `async` through the whole
-/// dispatcher to accommodate two tools would make every local tool pay for it.
-pub fn handles(name: &str) -> bool {
-    matches!(name, "web_search" | "read_search_result")
-}
-
-/// Runs a search tool and produces the same outcome shape a local tool would.
-pub async fn run<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    call: &crate::llm::toolcall::ToolCall,
-    engine_id: &str,
-) -> crate::tools::dispatch::DispatchOutcome {
-    use crate::tools::dispatch::DispatchOutcome;
-    use tauri::Manager;
-
-    let refuse = |result: String, summary: String| DispatchOutcome {
-        call_id: call.id.clone(),
-        tool: call.name.clone(),
-        result,
-        summary,
-        ok: false,
-    };
-
-    let Ok(args) = call.args() else {
-        return refuse(
-            format!("'{}' had unparseable arguments.", call.name),
-            "搜索的参数没写对".into(),
-        );
-    };
-
-    let state = app.state::<SearchState>();
-
-    match call.name.as_str() {
-        "web_search" => {
-            let query = args
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .trim();
-            if query.is_empty() {
-                return refuse(
-                    "web_search needs a non-empty query.".into(),
-                    "搜索词是空的".into(),
-                );
-            }
-
-            /*
-             * A key upgrades the search; it is not required to have one.
-             *
-             * The keyless backend is the default because asking someone to go
-             * and mint a Google Cloud key before their desktop pet can look
-             * something up is not a trade anyone would take. If a key happens
-             * to be stored *and* an engine id is set, use it — that is the
-             * whole web instead of an encyclopedia.
-             */
-            let backend = match crate::secrets::read(KEY_ACCOUNT) {
-                Ok(key) if !engine_id.trim().is_empty() => Backend::Google {
-                    key,
-                    engine_id: engine_id.to_string(),
-                },
-                _ => Backend::Builtin,
-            };
-
-            log::info!(
-                "web_search ({}): {} chars",
-                match backend {
-                    Backend::Builtin => "builtin",
-                    Backend::Google { .. } => "google",
-                },
-                query.chars().count()
-            );
-            match search(&backend, query).await {
-                Ok(hits) => {
-                    let listing = format_hits(&hits);
-                    let count = hits.len();
-                    state.store(hits);
-                    DispatchOutcome {
-                        call_id: call.id.clone(),
-                        tool: call.name.clone(),
-                        result: listing,
-                        summary: if count == 0 {
-                            format!("搜了「{query}」，没找到什么")
-                        } else {
-                            format!("搜了「{query}」，找到 {count} 条")
-                        },
-                        ok: true,
-                    }
-                }
-                Err(error) => {
-                    log::warn!("web_search failed: {error}");
-                    refuse(
-                        format!("The search failed: {error}. Do not retry the same query."),
-                        format!("搜索失败：{error}"),
-                    )
-                }
-            }
-        }
-
-        "read_search_result" => {
-            let index = args.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-            let Some(hit) = state.get(index) else {
-                let have = state.len();
-                return refuse(
-                    if have == 0 {
-                        "There are no search results to read. Call web_search first.".into()
-                    } else {
-                        format!("There is no result {index}; the list has {have}.")
-                    },
-                    "没有这一条搜索结果".into(),
-                );
-            };
-
-            log::info!("read_search_result {index}: {}", hit.url);
-            match fetch_extract(&hit.url).await {
-                Ok(text) => DispatchOutcome {
-                    call_id: call.id.clone(),
-                    tool: call.name.clone(),
-                    // The URL is included so she can cite it. She still cannot
-                    // *choose* one — this is the address of a page she already
-                    // picked by number.
-                    result: format!("From {} ({}):\n\n{}", hit.title, hit.url, text),
-                    summary: format!("读了《{}》", hit.title),
-                    ok: true,
-                },
-                Err(error) => {
-                    log::warn!("read_search_result {index} failed: {error}");
-                    refuse(
-                        format!(
-                            "Could not read {}: {error}. Try a different result, \
-                             or answer from the snippets.",
-                            hit.url
-                        ),
-                        format!("《{}》打不开", hit.title),
-                    )
-                }
-            }
-        }
-
-        other => refuse(
-            format!("'{other}' is not a search tool."),
-            "不认识这个工具".into(),
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -750,6 +697,37 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].title, "Rust");
         assert!(hits[0].snippet.contains("systems programming"));
+    }
+
+    #[test]
+    fn gdelt_articles_become_hits() {
+        let body = r#"{"articles":[
+            {"title":"Apple ships thing","url":"https://news.example/a","domain":"news.example","seendate":"20260809T120000Z"},
+            {"title":"No url, dropped"}
+        ]}"#;
+        let hits = parse_gdelt(body);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].snippet.contains("news.example"));
+    }
+
+    #[test]
+    fn gdelt_error_text_is_just_no_results() {
+        // GDELT reports query errors as plain prose, not JSON. That is the
+        // trigger for the RSS fallback, so it must read as empty, not panic.
+        assert!(parse_gdelt("Your query was too short or too long.").is_empty());
+    }
+
+    #[test]
+    fn rss_items_become_hits_and_cdata_is_unwrapped() {
+        let xml = r#"<rss><channel>
+            <item><title><![CDATA[米哈游发布新作]]></title><link>https://example.cn/1</link><pubDate>Sun, 09 Aug 2026</pubDate></item>
+            <item><title>Broken, no link</title></item>
+            <item><title>A &amp; B</title><link>https://example.cn/2</link></item>
+        </channel></rss>"#;
+        let hits = parse_news_rss(xml);
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].title, "米哈游发布新作");
+        assert_eq!(hits[1].title, "A & B");
     }
 
     #[test]
@@ -824,59 +802,5 @@ mod tests {
         let text = extract_text("<p>before</p><script>var x = 1;");
         assert!(text.contains("before"));
         assert!(!text.contains("var x"));
-    }
-
-    #[test]
-    fn results_are_one_based_because_that_is_how_the_model_is_told_to_count() {
-        let state = SearchState::default();
-        state.store(vec![
-            Hit {
-                title: "first".into(),
-                url: "https://1".into(),
-                snippet: String::new(),
-            },
-            Hit {
-                title: "second".into(),
-                url: "https://2".into(),
-                snippet: String::new(),
-            },
-        ]);
-
-        assert_eq!(state.get(1).expect("first").title, "first");
-        assert_eq!(state.get(2).expect("second").title, "second");
-        // 0 is not "the first"; it is a miscount, and must not silently open it.
-        assert!(state.get(0).is_none());
-        assert!(state.get(3).is_none());
-    }
-
-    #[test]
-    fn the_numbering_shown_to_the_model_matches_what_the_index_resolves() {
-        // These two drifting apart would make her open a different page from the
-        // one she named, which is the kind of wrong that looks like a lie.
-        let hits = vec![
-            Hit {
-                title: "alpha".into(),
-                url: "https://a".into(),
-                snippet: "s".into(),
-            },
-            Hit {
-                title: "beta".into(),
-                url: "https://b".into(),
-                snippet: "s".into(),
-            },
-        ];
-        let listing = format_hits(&hits);
-        assert!(listing.contains("1. alpha"));
-        assert!(listing.contains("2. beta"));
-
-        let state = SearchState::default();
-        state.store(hits);
-        assert_eq!(state.get(1).expect("1").title, "alpha");
-        assert_eq!(state.get(2).expect("2").title, "beta");
-    }
-
-    #[test]
-    fn no_results_says_so_rather_than_returning_an_empty_string() {
-        assert_eq!(format_hits(&[]), "No results.");
     }
 }

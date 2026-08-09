@@ -273,10 +273,13 @@ export function Composer() {
               // span was the button's only accessible name.
               aria-label={webSearch ? "联网搜索已开启" : "联网搜索已关闭"}
               onClick={() => useConfigStore.getState().patch({ webSearch: !webSearch })}
+              // Says out loud that this is the same switch as the one in
+              // Settings. Two controls for one value read as two features
+              // unless one of them admits it.
               title={
                 webSearch
-                  ? "联网搜索已开启 —— 点击关闭"
-                  : "联网搜索已关闭 —— 点击开启"
+                  ? "联网搜索已开启，点击关闭（和设置里是同一个开关）"
+                  : "联网搜索已关闭，点击开启（和设置里是同一个开关）"
               }
             >
               {webSearch ? <Icon.Globe size={15} /> : <Icon.GlobeOff size={15} />}

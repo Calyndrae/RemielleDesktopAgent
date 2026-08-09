@@ -124,6 +124,16 @@ export const ipc = {
    * does with them is her business.
    */
   ambientLine: (request: AmbientRequest) => invoke<string>("ambient_line", { request }),
+
+  /**
+   * Runs one test query against the optional Google credentials.
+   *
+   * Called at save time, because that is the moment the user can act on a
+   * failure. The 403 for "project has no Custom Search API" used to surface
+   * mid-conversation instead, where it read as the whole feature being broken.
+   */
+  verifySearch: (key: string, engineId: string) =>
+    invoke<number>("verify_search", { key, engineId }),
   startChat: (streamId: string, request: ChatRequest) =>
     invoke<void>("start_chat", { streamId, request }),
   cancelChat: (streamId: string) => invoke<void>("cancel_chat", { streamId }),
