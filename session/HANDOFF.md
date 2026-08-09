@@ -366,6 +366,27 @@ wrong behaviour and the right behaviour look identical.
     **a platform-conditional assertion evaluated on a third platform proves
     nothing.** Prefer a `Platform::Any` fixture and let the dedicated platform
     test carry the gating.
+15. **macOS stamps a window's Space eligibility at creation, using the app's
+    activation policy at that instant — and no later write undoes it.** The
+    overlay had level 25, `CanJoinAllSpaces | FullScreenAuxiliary` (readback
+    `0x151`), an accessory process… and `kCGWindowIsOnscreen` still went false
+    whenever any fullscreen Space was active, because the window was born from
+    `tauri.conf.json` in the gap where tao's `setActivationPolicy(Regular)`
+    (bug 13) was in force. Re-setting the policy, re-setting the flags, and
+    re-ordering the shown window all read back correctly and change nothing.
+    Fixed by creating the overlay in `setup()` *after* the accessory line —
+    the config's `windows` array is deliberately empty; do not put her back.
+    Proven both directions with minimal AppKit harnesses: identical flags
+    composite over a fullscreen Space when created accessory, and never do
+    when created regular-then-switched. Verify with a self-made fullscreen
+    Space (`toggleFullScreen` harness) — swiping by hand is not scriptable
+    without Accessibility.
+16. **A binary from plain `cargo build --release` boots to a blank webview.**
+    Release asset embedding is behind the `custom-protocol` feature, which the
+    tauri CLI passes and bare cargo does not; without it the app silently waits
+    on `devUrl` (localhost:1420) forever — window at default 800×600, no log
+    lines at all. For binary-swap debugging, build with
+    `cargo build --release --features custom-protocol`.
 
 ---
 

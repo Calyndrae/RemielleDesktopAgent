@@ -102,14 +102,46 @@ pub fn set_above_fullscreen<R: Runtime>(window: &tauri::WebviewWindow<R>, on: bo
         };
         ns.setCollectionBehavior(behaviour);
 
+        // Re-order after the flags: the window server decides which Spaces a
+        // window belongs to when it is *ordered*, not when its behaviour
+        // changes. Minimal AppKit windows with these exact flags composite
+        // over fullscreen Spaces; this window, flagged identically, stayed
+        // `kCGWindowIsOnscreen=false` until re-ordered. Only when already
+        // visible — this must never pre-empt `overlay_ready`'s reveal.
+        if on && ns.isVisible() {
+            ns.orderFrontRegardless();
+        }
+
         // Read back rather than trusted. This exact write was once silently
         // losing a race, and the readback in the log is what proves it stuck.
         log::info!(
-            "window level asked={} readback={}",
+            "window level asked={} readback={} behavior asked={:#x} readback={:#x}",
             if on { ABOVE_FULLSCREEN } else { NORMAL },
-            ns.level()
+            ns.level(),
+            behaviour.0,
+            ns.collectionBehavior().0
         );
     });
+    // Second readback after the queues drain: the level write was once undone
+    // by a write that arrived *later*, so an immediate readback alone proves
+    // nothing about what the window looks like two seconds from now.
+    {
+        let handle = window.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let inner = handle.clone();
+            let _ = handle.run_on_main_thread(move || {
+                if let Some(ns) = ns_window(&inner) {
+                    log::info!(
+                        "window level t+2s readback={} behavior readback={:#x} visible={}",
+                        ns.level(),
+                        ns.collectionBehavior().0,
+                        ns.isVisible()
+                    );
+                }
+            });
+        });
+    }
     if result.is_err() {
         log::warn!("could not queue window-level change to the main thread");
     }

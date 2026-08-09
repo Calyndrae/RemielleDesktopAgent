@@ -126,6 +126,47 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // The overlay is created HERE, after the policy line above, and not
+            // in `tauri.conf.json` — and that ordering is the entire point.
+            //
+            // The window server stamps a window's Space eligibility when the
+            // window is *created*, using the app's activation policy at that
+            // moment. Config windows are created while tao's `Regular` is still
+            // in force, and such a window never joins another app's fullscreen
+            // Space — `CanJoinAllSpaces | FullScreenAuxiliary` and level 25
+            // read back correctly and are ignored, `kCGWindowIsOnscreen` stays
+            // false the moment any fullscreen Space is active, and flipping the
+            // policy afterwards does not recover it. Verified both ways with
+            // minimal AppKit harnesses (session/ notes, 2026-08-10): identical
+            // flags composite over a fullscreen Space when created accessory,
+            // and stay hidden when created regular-then-switched.
+            //
+            // So: policy first, window second. Every option below mirrors what
+            // the config entry used to say.
+            let _overlay = tauri::WebviewWindowBuilder::new(
+                app,
+                OVERLAY_LABEL,
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Remielle")
+            .inner_size(800.0, 600.0)
+            .transparent(true)
+            .decorations(false)
+            // On macOS tao's always-on-top writes a wrong level (see
+            // platform/macos.rs); the level is owned there instead, so tao is
+            // kept away from it from the very first frame.
+            .always_on_top(cfg!(not(target_os = "macos")))
+            .skip_taskbar(true)
+            .shadow(false)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .closable(false)
+            .focused(false)
+            .visible(false)
+            .accept_first_mouse(true)
+            .build()?;
+
             // Before anything that can fail. The tray is the only control that
             // does not require finding her on screen first, so it has to exist
             // even if the overlay never comes up -- a webview that fails to
