@@ -435,3 +435,22 @@ Breaking these will make it look wrong in ways that are hard to name.
 1. **Google Programmable Search key** — needed only for §5.4.
 2. **Whether to sign the macOS build.** Unsigned means Gatekeeper warnings.
 3. Whether to publish releases from CI or build locally.
+
+## Signing (local, 2026-08-11)
+
+Every build is now signed with **"Remielle Local Signing"** — a self-signed
+code-signing certificate in the login keychain — via `scripts/sign-macos.sh`
+(run it on the bundled .app after `tauri build`; it is a quiet no-op on
+machines without the identity). The point is the Keychain: ACLs key on the
+designated requirement, which for ad-hoc signatures changes every build
+(→ password prompt per stored key per rebuild), and with this identity is
+`identifier "com.calyndrae.remielle-desktop-agent" and certificate leaf =
+H"fe409f80…"` — verified byte-identical across consecutive rebuilds. One
+始终允许, ever.
+
+To recreate on a new machine: openssl req -x509 with
+`keyUsage=digitalSignature, extendedKeyUsage=codeSigning` (CN must be
+"Remielle Local Signing"), export p12, `security import … -T
+/usr/bin/codesign`, `security add-trusted-cert -p codeSign`. This is NOT
+distribution signing — Gatekeeper on other machines still warns; that is
+still §9's Apple-Developer decision.
