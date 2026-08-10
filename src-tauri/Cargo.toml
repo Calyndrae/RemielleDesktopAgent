@@ -90,6 +90,9 @@ keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", features = ["apple-native"] }
+# Already in the tree via keyring; direct use is for the promptless existence
+# probe in secrets.rs — attribute-only Keychain searches never trip the ACL.
+security-framework = "3"
 # Reaching the NSWindow directly. Tauri's `set_always_on_top` maps to the
 # floating window level, which is above ordinary windows and *below* a
 # fullscreen Space — so she vanished the moment anything went fullscreen. Fixing

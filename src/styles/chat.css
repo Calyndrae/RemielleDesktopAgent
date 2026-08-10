@@ -344,9 +344,8 @@
   text-wrap: pretty;
 }
 
-.prose--streaming {
-  white-space: pre-wrap;
-}
+/* Streaming renders through the same markdown pipeline as settled text, so it
+   needs no whitespace mode of its own — the caret is the only difference. */
 
 .prose--muted {
   color: var(--text-muted);
@@ -363,25 +362,28 @@
   margin-bottom: 0;
 }
 
+/* The old per-chunk blur-in went with the per-chunk spans; markdown renders
+   the reply as one tree, so arrival is marked by the caret alone. */
+
 /*
- * Streamed chunks fade in from blurred to sharp.
- *
- * The keyframe has no `to`: it animates toward the element's own computed
- * style, and with no fill mode the filter is gone once it finishes rather than
- * leaving hundreds of permanent compositing layers in a long reply.
+ * The caret rides the last line as a pseudo-element, because a real element
+ * appended after the markdown output always landed *under* it — every final
+ * markdown child is a block, so an inline sibling gets its own anonymous line
+ * at the left margin. Attached to the last paragraph or list item, it blinks
+ * where the next character will actually appear. A reply that ends in a table
+ * or display formula simply has no caret for that moment, which is quieter
+ * than a wrongly-placed one.
  */
-.chunk {
-  animation: chunk-in 0.08s ease-out;
-}
-
-@keyframes chunk-in {
-  from {
-    filter: blur(6px);
-    opacity: 0.35;
-  }
-}
-
-.caret {
+.prose--streaming > p:last-child::after,
+.prose--streaming > ul:last-child > li:last-child > p:last-child::after,
+.prose--streaming > ul:last-child > li:last-child:not(:has(> p))::after,
+.prose--streaming > ol:last-child > li:last-child > p:last-child::after,
+.prose--streaming > ol:last-child > li:last-child:not(:has(> p))::after,
+.prose--streaming > h1:last-child::after,
+.prose--streaming > h2:last-child::after,
+.prose--streaming > h3:last-child::after,
+.prose--streaming > blockquote:last-child > p:last-child::after {
+  content: "";
   display: inline-block;
   width: 2px;
   height: 1em;
@@ -414,6 +416,171 @@
 
 .code code {
   white-space: pre;
+}
+
+/* ---------- rendered markdown ---------- */
+
+/*
+ * The reply is markdown now, so the transcript needs a type scale — but a
+ * 400px companion panel is not a document page. Headings step 15.5/15/14.5
+ * against 14px body: enough hierarchy to scan by, not enough to shout.
+ */
+.prose p {
+  margin: 0 0 10px;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  margin: 14px 0 6px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.prose h1 { font-size: 15.5px; }
+.prose h2 { font-size: 15px; }
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 { font-size: 14.5px; }
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose > :last-child {
+  margin-bottom: 0;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 10px;
+  /* Room for the marker without a gutter that eats a CJK glyph's width. */
+  padding-left: 1.4em;
+}
+
+.prose li {
+  margin: 2px 0;
+}
+
+.prose li > p {
+  margin: 0;
+}
+
+.prose blockquote {
+  margin: 10px 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--accent);
+  color: var(--text-muted);
+}
+
+.prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.prose hr {
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* Inline code, as opposed to the fenced .code block. */
+.prose :not(pre) > code {
+  padding: 1px 5px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 0.92em;
+}
+
+.prose__link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* GFM tables scroll in their own strip; the panel must never widen. */
+.prose__tablewrap {
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
+.prose table {
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.prose th,
+.prose td {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.prose th {
+  background: var(--surface-sunken);
+  font-weight: 600;
+}
+
+/*
+ * KaTeX. Display math can be wider than the panel — a long derivation scrolls
+ * inside its own line rather than stretching the bubble. Inline math inherits
+ * the text colour so it reads as part of the sentence, both themes.
+ */
+.prose .katex-display {
+  margin: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
+.prose .katex {
+  font-size: 1.06em;
+}
+
+/* ---------- citation chips ---------- */
+
+/*
+ * A citation is a number wearing its source's favicon. Superscript-ish: it
+ * rides the text without adding a full line-height, and the whole chip is the
+ * click target because a 10px icon alone is not.
+ */
+.cite {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0 1px;
+  padding: 0 5px 0 3px;
+  vertical-align: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 15px;
+  cursor: default;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.cite:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.cite__icon {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.cite__n {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- provenance strip ---------- */
@@ -1238,8 +1405,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chunk,
-  .caret,
+  .prose--streaming ::after,
   .panel--opening,
   .meta__tab--pulsing {
     animation: none;

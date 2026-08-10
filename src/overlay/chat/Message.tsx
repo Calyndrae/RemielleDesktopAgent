@@ -2,7 +2,7 @@ import { memo, useLayoutEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { describeError, type ApiError, type ToolActivity } from "@/lib/ipc";
-import { parseBlocks } from "@/lib/markdownLite";
+import { Prose } from "./Prose";
 import {
   reasoningSummary,
   useChatStore,
@@ -308,32 +308,16 @@ export const Message = memo(function Message({
 
       {message.error ? (
         <ErrorRow error={message.error} />
-      ) : streaming ? (
-        <div className="prose prose--streaming">
-          {message.chunks.map((chunk, index) => (
-            // Chunks are append-only, so the index is a stable identity.
-            <span className="chunk" key={index}>
-              {chunk}
-            </span>
-          ))}
-          <span className="caret" aria-hidden="true" />
-        </div>
       ) : message.status === "cancelled" && empty ? (
         <div className="prose prose--muted">已停止</div>
       ) : (
-        <div className="prose">
-          {parseBlocks(text).map((block, index) =>
-            block.kind === "code" ? (
-              <pre className="code" key={index}>
-                <code>{block.code}</code>
-              </pre>
-            ) : (
-              <p className="para" key={index}>
-                {block.text}
-              </p>
-            ),
-          )}
-        </div>
+        /*
+         * One renderer for streaming and settled text. Re-parsing the whole
+         * reply per chunk is cheap at chat sizes, and the alternative — plain
+         * chunks while streaming, markdown after — made every reply visibly
+         * re-typeset itself at the moment it finished.
+         */
+        <Prose text={text} tools={message.tools} streaming={streaming} />
       )}
 
       {/*

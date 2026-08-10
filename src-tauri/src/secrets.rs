@@ -78,6 +78,35 @@ mod store {
             Err(e) => Err(SecretError::Backend(e.to_string())),
         }
     }
+
+    /// Whether an item exists, **without touching its data**.
+    ///
+    /// The distinction is the whole ballgame on macOS: the Keychain ACL
+    /// guards the secret's *data*, and reading data from a binary whose code
+    /// signature changed — every ad-hoc rebuild, every update — raises a
+    /// password prompt per item. An attribute-only search never consults the
+    /// ACL, so "is a key stored?" is answerable silently. The boot-time sweep
+    /// used to answer it by reading every stored key, which is what made
+    /// launching after an update feel like a password-entry minigame.
+    #[cfg(target_os = "macos")]
+    pub fn exists(account: &str) -> bool {
+        use security_framework::item::{ItemClass, ItemSearchOptions, Limit};
+        ItemSearchOptions::new()
+            .class(ItemClass::generic_password())
+            .service(super::SERVICE)
+            .account(account)
+            .limit(Limit::Max(1))
+            .search()
+            .map(|items| !items.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Windows' credential manager is DPAPI-backed and never prompts, so the
+    /// straightforward read doubles as the existence check.
+    #[cfg(target_os = "windows")]
+    pub fn exists(account: &str) -> bool {
+        get(account).is_ok()
+    }
 }
 
 /// Development fallback for platforms without a supported credential store.
@@ -117,6 +146,33 @@ mod store {
         lock().remove(account);
         Ok(())
     }
+
+    pub fn exists(account: &str) -> bool {
+        get(account).is_ok()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The in-process cache
+// ---------------------------------------------------------------------------
+
+/// Keys already read (or written) this run.
+///
+/// One Keychain prompt per key per *process*, not per use: the first send
+/// after a rebuild may ask, and after that every router call, retry and
+/// model-list refresh reads from here. Process memory is the same trust
+/// domain as the request builder that is about to put the key in an
+/// Authorization header, so caching it costs nothing the send itself does
+/// not already spend.
+fn cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, String>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn cache_lock() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, String>> {
+    cache().lock().unwrap_or_else(|e| e.into_inner())
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +181,12 @@ mod store {
 
 /// Reads a key. Crate-internal on purpose: see the module docs.
 pub(crate) fn read(account: &str) -> Result<String, SecretError> {
-    store::get(account)
+    if let Some(hit) = cache_lock().get(account) {
+        return Ok(hit.clone());
+    }
+    let secret = store::get(account)?;
+    cache_lock().insert(account.to_string(), secret.clone());
+    Ok(secret)
 }
 
 // ---------------------------------------------------------------------------
@@ -153,29 +214,37 @@ pub async fn store_key(account: String, key: String) -> Result<(), SecretError> 
     if trimmed.is_empty() {
         return Err(SecretError::Empty);
     }
-    store::set(&account, trimmed)
+    store::set(&account, trimmed)?;
+    cache_lock().insert(account, trimmed.to_string());
+    Ok(())
 }
 
 /// Whether a key is stored. This is the *only* thing the UI can learn about a
-/// key's content.
+/// key's content — and it is answered without reading the secret, because the
+/// boot-time sweep asks it for every provider and a data read is a Keychain
+/// prompt after every re-signed build.
 #[tauri::command]
 pub async fn has_key(account: String) -> bool {
-    store::get(&account).is_ok()
+    cache_lock().contains_key(&account) || store::exists(&account)
 }
 
 #[tauri::command]
 pub async fn delete_key(account: String) -> Result<(), SecretError> {
+    cache_lock().remove(&account);
     store::delete(&account)
 }
 
 /// A masked hint for the settings UI, e.g. `sk-…7f3a`.
 ///
-/// Enough to tell two keys apart when several accounts are configured, and not
-/// enough to reconstruct one.
+/// Served from the in-process cache only. Reading the store here would raise
+/// a Keychain prompt just for opening settings after a rebuild — a password
+/// dialog in exchange for four decorative characters. Until the key has been
+/// read for real work (or stored this run), the hint is simply absent and the
+/// UI leans on `has_key`'s badge instead.
 #[tauri::command]
 pub async fn key_hint(account: String) -> Option<String> {
-    let key = store::get(&account).ok()?;
-    Some(mask(&key))
+    let hit = cache_lock().get(&account).cloned()?;
+    Some(mask(&hit))
 }
 
 fn mask(key: &str) -> String {

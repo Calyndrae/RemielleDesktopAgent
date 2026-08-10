@@ -54,3 +54,5 @@ the `.app` and `.dmg` on every build would grow the repository without bound,
 and they are reproducible from source with one command. The folders and their
 `README.md` files are tracked, so the structure survives a clean checkout even
 when the artefacts do not.
+
+- 2026-08-11: `src/lib/markdownLite.ts` + test — superseded by `src/overlay/chat/Prose.tsx` (react-markdown + KaTeX). Recover: `git show ba4a270:src/lib/markdownLite.ts`.
