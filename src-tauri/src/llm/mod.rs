@@ -1800,7 +1800,16 @@ async fn route_search(
         ],
         "stream": false,
         "temperature": 0.1,
-        "max_tokens": 60,
+        /*
+         * Generous on purpose. This was 60, sized for the tag alone — and
+         * deepseek-v4-flash is a reasoning model, which spends its budget
+         * thinking *before* the tag. At 60 the thinking ate everything,
+         * `content` came back empty, and empty parses as "no search": the
+         * router was a coin flip that mostly landed on never searching. The
+         * tag is still tiny; this just leaves room for the preamble models
+         * like that insist on.
+         */
+        "max_tokens": 400,
     });
 
     let mut builder = http.post(format!("{base}/chat/completions")).json(&body);
@@ -1808,11 +1817,22 @@ async fn route_search(
         builder = builder.bearer_auth(key);
     }
 
-    let Ok(response) = builder.send().await else {
-        return SearchPlan::Skip;
+    // Every early return names itself in the log. All of these used to fold
+    // silently into "router says no search", which made a dead router and a
+    // genuine no-search decision indistinguishable from the outside.
+    let response = match builder.send().await {
+        Ok(response) => response,
+        Err(error) => {
+            log::warn!("router unreachable: {error}");
+            return SearchPlan::Skip;
+        }
     };
-    let Ok(payload) = response.text().await else {
-        return SearchPlan::Skip;
+    let payload = match response.text().await {
+        Ok(payload) => payload,
+        Err(error) => {
+            log::warn!("router reply unreadable: {error}");
+            return SearchPlan::Skip;
+        }
     };
     let decision = serde_json::from_str::<serde_json::Value>(&payload)
         .ok()
@@ -1822,6 +1842,14 @@ async fn route_search(
                 .map(str::to_string)
         })
         .unwrap_or_default();
+
+    if decision.trim().is_empty() {
+        // The reasoning-burn signature: a well-formed reply whose content is
+        // empty because the token budget went to thinking.
+        log::warn!("router returned empty content: {}", &payload.chars().take(300).collect::<String>());
+    } else {
+        log::info!("router decision: {}", decision.trim().chars().take(120).collect::<String>());
+    }
 
     parse_route(&decision)
 }
