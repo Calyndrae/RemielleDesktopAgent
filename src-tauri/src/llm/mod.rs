@@ -1919,13 +1919,11 @@ async fn preflight_search<R: Runtime>(
 
     let mut block = String::new();
     for (n, hit) in hits.iter().enumerate() {
-        block.push_str(&format!(
-            "{}. {}\nURL: {}\n{}\n\n",
-            n + 1,
-            hit.title,
-            hit.url,
-            hit.snippet
-        ));
+        // No URL line. She cites by number and the panel's source list carries
+        // the links — which matters because Google News URLs are 400-character
+        // redirect blobs, and the first live test had her dutifully pasting
+        // them mid-sentence, as instructed, into an unreadable wall.
+        block.push_str(&format!("{}. {}\n{}\n\n", n + 1, hit.title, hit.snippet));
         emit_once(
             app,
             stream_id,
@@ -1947,15 +1945,18 @@ async fn preflight_search<R: Runtime>(
         }
     }
 
-    // The citation rule rides on the system message. Same shape Cyrene uses:
-    // raw URL in brackets after the claim, so the user can check her.
+    // The citation rule rides on the system message. Cyrene put the raw URL in
+    // the brackets; here it is the result's number, because the panel already
+    // renders every result as a clickable source and some of these URLs are
+    // longer than the sentences citing them.
     if let Some(system) = messages.first_mut() {
         if system["role"] == "system" {
             let existing = system["content"].as_str().unwrap_or_default();
             system["content"] = serde_json::json!(format!(
-                "{existing}\n\n[系统能力] 你现在拿到了实时搜索结果。回答时使用它们；\
-                 基于某条结果下结论时，必须在那句话后面用方括号标出它的原始 URL，\
-                 例如：天是蓝的 [https://example.com/sky]。不要说自己无法联网。"
+                "{existing}\n\n[系统能力] 你现在拿到了实时搜索结果，按编号列出。回答时使用它们；\
+                 基于某条结果下结论时，在那句话后面用方括号标出它的编号，例如：天是蓝的 [2]。\
+                 不要把结果里的链接抄进回答——来源列表会显示在你的回答旁边。\
+                 留意每条结果的日期，别把旧闻当成新消息。不要说自己无法联网。"
             ));
         }
     }

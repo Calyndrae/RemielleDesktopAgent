@@ -17,6 +17,21 @@ import { useConfigStore } from "./config";
 /** Hard cap on a single user message. */
 export const MAX_INPUT_LENGTH = 500;
 
+/**
+ * The user's local date, stamped into every request's system prompt.
+ *
+ * Models are frozen at their training cutoff, and it shows at the worst
+ * moments: handed fresh search results, she presented a 2025 article as
+ * current because nothing anywhere said what year it is. JS is the honest
+ * source here — it knows the user's timezone, where Rust would have to do
+ * calendar math against UTC and be a day off twice a day.
+ */
+export function todayLine(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `今天是 ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}（用户当地日期）。`;
+}
+
 /** Show the counter only once the user is near the limit. */
 export const COUNTER_THRESHOLD = MAX_INPUT_LENGTH - 60;
 
@@ -201,7 +216,7 @@ function beginReply(set: SetState, get: () => ChatStore): void {
        * with nothing cached anywhere to say otherwise.
        */
       system:
-        [config.systemPrompt.trim(), composeProfileBlock(config.profile)]
+        [config.systemPrompt.trim(), composeProfileBlock(config.profile), todayLine()]
           .filter(Boolean)
           .join("\n\n") || null,
       temperature: config.temperature,

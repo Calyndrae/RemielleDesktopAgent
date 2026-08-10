@@ -171,9 +171,14 @@ pub async fn search_news(query: &str) -> Result<Vec<Hit>, SearchError> {
     } else {
         ("en-US", "US", "US:en")
     };
+    // `when:7d` is Google News' own recency operator. Without it a generic
+    // query ("科技") ranks by prominence and happily serves last year's most
+    // popular article as if it were this week's — which is exactly what
+    // happened the first time a user asked her for "recent" news.
+    let recent = format!("{query} when:7d");
     let response = http
         .get("https://news.google.com/rss/search")
-        .query(&[("q", query), ("hl", hl), ("gl", gl), ("ceid", ceid)])
+        .query(&[("q", recent.as_str()), ("hl", hl), ("gl", gl), ("ceid", ceid)])
         .send()
         .await
         .map_err(|e| SearchError::Network(e.to_string()))?;
@@ -248,11 +253,12 @@ pub fn parse_news_rss(xml: &str) -> Vec<Hit> {
         if let (Some(title), Some(link)) = (field("title"), field("link")) {
             let url = clean(link);
             if url.starts_with("http") {
-                hits.push(Hit {
+                let date = field("pubDate").map(clean).unwrap_or_default();
+                hits.push((date_key(&date), Hit {
                     title: clean(title),
                     url,
-                    snippet: field("pubDate").map(clean).unwrap_or_default(),
-                });
+                    snippet: tidy_rss_date(&date),
+                }));
             }
         }
         if hits.len() >= MAX_HITS {
@@ -260,7 +266,36 @@ pub fn parse_news_rss(xml: &str) -> Vec<Hit> {
         }
         rest = &rest[start + end..];
     }
-    hits
+    // Newest first. The feed's own order mixes relevance in, and "recent news"
+    // answered from position one must actually be the most recent.
+    hits.sort_by(|a, b| b.0.cmp(&a.0));
+    hits.into_iter().map(|(_, hit)| hit).collect()
+}
+
+/// "Sat, 09 Aug 2026 07:12:00 GMT" → 20260809, for sorting. Unknown → 0.
+///
+/// Display-and-order only — no timezone math, no calendar arithmetic, so none
+/// of the bug-farm the `now_local` comment in tools/system.rs warns about.
+fn date_key(pub_date: &str) -> u32 {
+    let mut parts = pub_date.trim_start_matches(|c: char| !c.is_ascii_digit()).split_whitespace();
+    let day: u32 = parts.next().and_then(|d| d.parse().ok()).unwrap_or(0);
+    let month = match parts.next().unwrap_or("") {
+        "Jan" => 1, "Feb" => 2, "Mar" => 3, "Apr" => 4, "May" => 5, "Jun" => 6,
+        "Jul" => 7, "Aug" => 8, "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12,
+        _ => 0,
+    };
+    let year: u32 = parts.next().and_then(|y| y.parse().ok()).unwrap_or(0);
+    year * 10_000 + month * 100 + day
+}
+
+/// The same RFC-2822 date as "2026-08-09" — a form the model reads at a
+/// glance next to the [今天是 …] line, so old news announces its own age.
+fn tidy_rss_date(pub_date: &str) -> String {
+    let key = date_key(pub_date);
+    if key == 0 {
+        return pub_date.to_string();
+    }
+    format!("{:04}-{:02}-{:02}", key / 10_000, key / 100 % 100, key % 100)
 }
 
 /// Save-time check for the optional Google credentials.
@@ -735,6 +770,27 @@ mod tests {
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].title, "米哈游发布新作");
         assert_eq!(hits[1].title, "A & B");
+    }
+
+    #[test]
+    fn rss_hits_come_newest_first_with_readable_dates() {
+        // Feed order is prominence-flavoured; a year-old headline arrived
+        // first in the wild and got presented as this week's news. Order must
+        // be by date, and the date must be legible at a glance in the snippet.
+        let xml = r#"<rss><channel>
+            <item><title>旧闻</title><link>https://example.cn/old</link><pubDate>Tue, 08 Jul 2025 10:00:00 GMT</pubDate></item>
+            <item><title>今天的</title><link>https://example.cn/new</link><pubDate>Mon, 10 Aug 2026 01:00:00 GMT</pubDate></item>
+        </channel></rss>"#;
+        let hits = parse_news_rss(xml);
+        assert_eq!(hits[0].title, "今天的");
+        assert_eq!(hits[0].snippet, "2026-08-10");
+        assert_eq!(hits[1].snippet, "2025-07-08");
+    }
+
+    #[test]
+    fn unparseable_dates_sort_last_and_pass_through() {
+        assert_eq!(date_key("whenever"), 0);
+        assert_eq!(tidy_rss_date("whenever"), "whenever");
     }
 
     #[test]
