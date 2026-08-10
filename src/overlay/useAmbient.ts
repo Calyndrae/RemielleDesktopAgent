@@ -82,6 +82,29 @@ export function useAmbient(pack: PackManifest | null): void {
     return () => clearTimeout(timer.current);
   }, []);
 
+  // ---- the opening line ----
+  useEffect(() => {
+    /*
+     * One greeting shortly after boot, always a *spoken* one.
+     *
+     * The periodic timer's first fire lands 10–60 minutes out and then
+     * speaks only one time in four — so across whole days of normal use the
+     * odds of ever hearing her rounded to never, and a user reported exactly
+     * that. Launching her is the one moment where an unprompted line is
+     * expected rather than an interruption; a couple of minutes in, she says
+     * hello. Subject to every gate the periodic path honours, and it counts
+     * against the same daily cap.
+     */
+    const delay = 75_000 + Math.random() * 60_000;
+    const boot = setTimeout(() => {
+      const ambient = useAmbientStore.getState();
+      if (useAgentStore.getState().canRunAmbient() && ambient.blockedBy() === null) {
+        void speak(lastInputRef.current);
+      }
+    }, delay);
+    return () => clearTimeout(boot);
+  }, []);
+
   // ---- dozing off ----
   useEffect(() => {
     let sleepTimer: ReturnType<typeof setTimeout>;
@@ -183,8 +206,13 @@ async function speak(lastInputAt: number): Promise<void> {
   const config = useConfigStore.getState();
 
   // Nothing to ask. She has no voice until a provider is configured, and
-  // silently doing nothing is the right behaviour rather than an error.
-  if (!isReady(config)) return;
+  // silently doing nothing is the right behaviour rather than an error —
+  // but noted once per boot, because "she never speaks" spent days looking
+  // like a scheduler bug when it was an unconfigured model.
+  if (!isReady(config)) {
+    noteOnce("ambient: greeting skipped — provider or model not configured");
+    return;
+  }
 
   const ambient = useAmbientStore.getState();
 
@@ -234,7 +262,23 @@ async function speak(lastInputAt: number): Promise<void> {
     // Counted only now. A greeting that failed, or that arrived after the user
     // said stop, has not been spent.
     now.noteFired();
-  } catch {
-    // Deliberately silent. See the note above.
+    void ipc
+      .frontendNote(`ambient: spoke (${now.runtime.firedToday + 1} today)`)
+      .catch(() => {});
+  } catch (error) {
+    // Silent to the user — nobody was waiting for this. But not silent to the
+    // log: every failed greeting used to vanish without a trace, which made
+    // "she never speaks" undiagnosable from the one artifact users send.
+    void ipc
+      .frontendNote(`ambient: line failed: ${String(error).slice(0, 300)}`)
+      .catch(() => {});
   }
+}
+
+/** Once per boot, to keep an unconfigured app from filling its own log. */
+let notedOnce = false;
+function noteOnce(message: string): void {
+  if (notedOnce) return;
+  notedOnce = true;
+  void ipc.frontendNote(message).catch(() => {});
 }
