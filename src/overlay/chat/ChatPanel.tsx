@@ -296,9 +296,26 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
           return `${child.className.toString().split(" ")[0]}=${Math.round(box.height)}@${Math.round(box.top - top + element.scrollTop)}`;
         })
         .join(" ");
+      /*
+       * Chromium refuses to reproduce this with identical content, so when
+       * the WKWebView build hits it, the last reply's block-level layout is
+       * the evidence that matters: any block whose scrollHeight outruns its
+       * offsetHeight, or whose offset position disagrees with its rect, is
+       * the element WebKit is over-counting.
+       */
+      const prose = element.querySelector(".msg:last-child .prose");
+      const blocks = prose
+        ? [...prose.children]
+            .map((block) => {
+              const el = block as HTMLElement;
+              return `${el.tagName.toLowerCase()}.${el.className.toString().split(" ")[0] || "-"}:ot=${el.offsetTop},oh=${el.offsetHeight},sh=${el.scrollHeight}`;
+            })
+            .slice(-14)
+            .join(" ")
+        : "no prose";
       void ipc
         .frontendNote(
-          `transcript void: scrollH=${element.scrollHeight} clientH=${element.clientHeight} contentBottom=${Math.round(contentBottom)} gap=${Math.round(gap)} kids: ${kids}`,
+          `transcript void: scrollH=${element.scrollHeight} clientH=${element.clientHeight} contentBottom=${Math.round(contentBottom)} gap=${Math.round(gap)} kids: ${kids} | last blocks: ${blocks}`,
         )
         .catch(() => {});
     }
