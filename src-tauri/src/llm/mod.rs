@@ -2045,10 +2045,17 @@ const AMBIENT_BRIEF: &str = "你刚好抬头看了一眼，想说一句话。\n\
     不要问「需要帮忙吗」这类客套，不要自我介绍，不要用「作为AI」之类的说法。\n\
     只输出这句话本身，不要加引号，不要加解释。";
 
-/// How many tokens one line is allowed. A cap this tight is also a safety net:
-/// a model that ignores the brief and starts writing an essay gets cut off
-/// rather than filling the screen.
-const AMBIENT_MAX_TOKENS: u32 = 120;
+/// The token budget for one unprompted line.
+///
+/// This was 120, sized for the line itself — and deepseek-v4-flash is a
+/// reasoning model that thinks before it speaks, inside the same budget. At
+/// 120 the thinking ate everything, `content` came back empty, and every
+/// greeting since the feature shipped died as 「她这次没想出要说什么」— the
+/// same starvation that broke the search router at 60. The line's *length*
+/// is enforced separately by the character cap below; this only has to be
+/// large enough that a model with a preamble habit still reaches the part
+/// where it talks.
+const AMBIENT_MAX_TOKENS: u32 = 600;
 
 /// Asks for one unprompted line.
 ///
