@@ -269,8 +269,11 @@ async function speak(lastInputAt: number): Promise<void> {
     // Silent to the user — nobody was waiting for this. But not silent to the
     // log: every failed greeting used to vanish without a trace, which made
     // "she never speaks" undiagnosable from the one artifact users send.
+    // JSON, not String(): a rejected invoke is an ApiError object, and
+    // String() renders that as "[object Object]" — which is how the first
+    // failure this line ever caught managed to keep its secret anyway.
     void ipc
-      .frontendNote(`ambient: line failed: ${String(error).slice(0, 300)}`)
+      .frontendNote(`ambient: line failed: ${JSON.stringify(error)?.slice(0, 300)}`)
       .catch(() => {});
   }
 }
