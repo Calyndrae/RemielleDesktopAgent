@@ -278,6 +278,18 @@ export function describeKeyIssue(issue: KeyFormatIssue): string {
 
 export const CHAT_EVENT = "chat://event";
 
+/**
+ * Invoke rejections from our commands are ApiError-shaped, but a rejection can
+ * also be a plain string (a panicked command, a plugin error). Wrapping the
+ * stragglers means every catch site can hand the result to `describeError`
+ * without first playing type detective.
+ */
+export function asApiError(error: unknown): ApiError {
+  return typeof error === "object" && error !== null && "kind" in error
+    ? (error as ApiError)
+    : { kind: "network", detail: { message: String(error) } };
+}
+
 /** Turns a typed provider error into something a person can act on. */
 export function describeError(error: ApiError): { title: string; hint: string } {
   switch (error.kind) {

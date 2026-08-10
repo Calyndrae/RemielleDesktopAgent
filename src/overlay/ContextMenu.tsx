@@ -18,6 +18,12 @@ export interface MenuItem {
    * could compete with the real sprite doing the real animation.
    */
   onHover?: () => void;
+  /**
+   * Selecting this item leaves the menu open. Exists for "再试一次" in the
+   * model list: closing on retry would make the user reopen the menu just to
+   * see whether the retry worked.
+   */
+  keepOpen?: boolean;
 }
 
 interface ContextMenuProps {
@@ -120,7 +126,7 @@ export function ContextMenu({
           onPointerEnter={item.onHover}
           onClick={() => {
             item.onSelect();
-            onClose();
+            if (!item.keepOpen) onClose();
           }}
         >
           {checkable && (

@@ -148,6 +148,13 @@ pub async fn search_news(query: &str) -> Result<Vec<Hit>, SearchError> {
                 ("format", "json"),
                 ("sort", "datedesc"),
             ])
+            // Tighter than the client's 15 s connect timeout, because GDELT is
+            // a *first attempt with a fallback*, not the only hope: on this
+            // user's network (WARP/Karing) it is sometimes unreachable
+            // outright, and every English news query would sit the full
+            // connect timeout looking frozen before the RSS fallback ran.
+            // When GDELT is healthy it answers in about two seconds.
+            .timeout(std::time::Duration::from_secs(6))
             .send()
             .await
         {

@@ -6,7 +6,7 @@ import { copyText, saveText } from "@/lib/saveText";
 import { COUNTER_THRESHOLD, MAX_INPUT_LENGTH, useChatStore } from "@/state/chat";
 import { currentProvider, searchAvailable, useConfigStore } from "@/state/config";
 import { ambientEmotePool, useAgentStore } from "@/state/agent";
-import { ipc } from "@/lib/ipc";
+import { asApiError, describeError, ipc, type ApiError } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { Icon } from "./icons";
@@ -31,10 +31,23 @@ export function Composer() {
    * while the menu is up.
    *
    * `null` means not fetched yet; the empty array means fetched and the
-   * provider returned nothing, and those two want different menus.
+   * provider returned nothing; an `{ error }` means the fetch itself failed —
+   * and those all want different menus. The failure used to collapse into the
+   * empty array, so a VPN blip rendered as "先去设置里配好密钥" to a user whose
+   * key was configured and fine — advice that was both wrong and mildly
+   * insulting, since nothing in settings can fix an unreachable provider.
    */
   const [modelMenu, setModelMenu] = useState<{ x: number; y: number } | null>(null);
-  const [models, setModels] = useState<string[] | null>(null);
+  const [models, setModels] = useState<string[] | { error: ApiError } | null>(null);
+
+  const fetchModels = () => {
+    setModels(null);
+    const { provider, baseUrl } = useConfigStore.getState();
+    void ipc
+      .listModels(provider, baseUrl.trim() || null)
+      .then(setModels)
+      .catch((error) => setModels({ error: asApiError(error) }));
+  };
 
   /*
    * The slash palette.
@@ -120,33 +133,55 @@ export function Composer() {
   const modelItems: MenuItem[] =
     models === null
       ? [{ id: "loading", label: "正在问服务商有哪些模型…", disabled: true, onSelect: () => {} }]
-      : [
-          ...(models.length === 0
-            ? [
-                {
-                  id: "none",
-                  // Says what to do about it. "没有模型" alone leaves the user
-                  // guessing whether it is broken or just unconfigured.
-                  label: "没拿到模型列表，先去设置里配好密钥",
-                  disabled: true,
-                  onSelect: () => {},
-                },
-              ]
-            : models.map((id) => ({
-                id: `model-${id}`,
-                label: id,
-                checked: id === model,
-                onSelect: () => {
-                  useConfigStore.getState().patch({ model: id });
-                  flash(`换成 ${id} 了`);
-                },
-              }))),
-          {
-            id: "open-settings",
-            label: "其他设置…",
-            onSelect: () => void openSettings(),
-          },
-        ];
+      : !Array.isArray(models)
+        ? models.error.kind === "noKey"
+          ? [
+              {
+                // No key genuinely is a settings problem, and the item takes
+                // you there instead of just naming the destination.
+                id: "no-key",
+                label: "还没配密钥 —— 去设置里给我一个",
+                onSelect: () => void openSettings(),
+              },
+            ]
+          : [
+              {
+                id: "why",
+                label: describeError(models.error).title,
+                disabled: true,
+                onSelect: () => {},
+              },
+              // The menu stays up through the retry, so the answer lands in
+              // front of the user instead of behind a closed menu.
+              { id: "retry", label: "再试一次", keepOpen: true, onSelect: fetchModels },
+              { id: "open-settings", label: "其他设置…", onSelect: () => void openSettings() },
+            ]
+        : [
+            ...(models.length === 0
+              ? [
+                  {
+                    // The call *worked* — the provider just offered nothing.
+                    id: "none",
+                    label: "服务商没有给出任何模型",
+                    disabled: true,
+                    onSelect: () => {},
+                  },
+                ]
+              : models.map((id) => ({
+                  id: `model-${id}`,
+                  label: id,
+                  checked: id === model,
+                  onSelect: () => {
+                    useConfigStore.getState().patch({ model: id });
+                    flash(`换成 ${id} 了`);
+                  },
+                }))),
+            {
+              id: "open-settings",
+              label: "其他设置…",
+              onSelect: () => void openSettings(),
+            },
+          ];
 
   /*
    * "/" at the start of the draft is a command, and the palette is the menu of
@@ -186,12 +221,7 @@ export function Composer() {
         closeSlash();
         const box = modelRef.current?.getBoundingClientRect();
         if (box) setModelMenu({ x: box.left, y: box.top - 6 });
-        setModels(null);
-        const { provider, baseUrl } = useConfigStore.getState();
-        void ipc
-          .listModels(provider, baseUrl.trim() || null)
-          .then(setModels)
-          .catch(() => setModels([]));
+        fetchModels();
       },
     },
     {
@@ -377,12 +407,7 @@ export function Composer() {
               // Refetched each time it opens. A model list that went stale
               // while the panel sat open would offer a choice the provider no
               // longer honours, and the call is cheap next to being wrong.
-              setModels(null);
-              const { provider, baseUrl } = useConfigStore.getState();
-              void ipc
-                .listModels(provider, baseUrl.trim() || null)
-                .then(setModels)
-                .catch(() => setModels([]));
+              fetchModels();
             }}
           >
             <span className="modelpill__name">{providerLabel}</span>

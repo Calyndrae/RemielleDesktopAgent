@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { asApiError, describeError, ipc, type ApiError } from "@/lib/ipc";
 import { describeAge, loadLastSession, type StoredSession } from "@/lib/lastSession";
 import { openSettings } from "@/lib/settingsWindow";
 import { useChatStore } from "@/state/chat";
@@ -31,11 +32,33 @@ const OPENERS = ["查点最近的消息", "帮我看段代码"];
  * Shown until a provider and model are actually usable.
  *
  * The composer stays visible but sending would fail, so the first screen says
- * what is missing and takes you straight there — rather than letting the user
- * type a message and only then discover there is no key.
+ * what is missing — and, where it can, fixes it on the spot. A missing key
+ * genuinely needs the settings form (verification, the credential store), so
+ * that case still opens settings. A missing *model* needs nothing but a list
+ * to pick from, so the list is fetched the moment this renders and the models
+ * appear as choices right here. This screen used to send both cases to
+ * settings, which for the model case meant a whole configuration window to
+ * answer a one-tap question no chat app answers that way.
  */
 function SetupPrompt() {
   const hasKey = useConfigStore((s) => s.configured.includes(s.provider));
+  const [models, setModels] = useState<string[] | { error: ApiError } | null>(null);
+
+  const fetchModels = useCallback(() => {
+    setModels(null);
+    const { provider, baseUrl } = useConfigStore.getState();
+    void ipc
+      .listModels(provider, baseUrl.trim() || null)
+      .then(setModels)
+      .catch((error) => setModels({ error: asApiError(error) }));
+  }, []);
+
+  useEffect(() => {
+    if (hasKey) fetchModels();
+  }, [hasKey, fetchModels]);
+
+  const failed = models !== null && !Array.isArray(models) ? models.error : null;
+  const empty = Array.isArray(models) && models.length === 0;
 
   return (
     <div className="empty">
@@ -44,10 +67,41 @@ function SetupPrompt() {
       </div>
       <p className="empty__greeting">还差一步。</p>
       <p className="empty__sub">
-        {hasKey ? "选一个模型，我们就可以开始了。" : "给我一个 API 密钥，我们就可以开始了。"}
+        {!hasKey
+          ? "给我一个 API 密钥，我们就可以开始了。"
+          : models === null
+            ? "正在问服务商有哪些模型…"
+            : failed
+              ? `${describeError(failed).title}。${describeError(failed).hint}`
+              : empty
+                ? "服务商没有给出任何模型，看看设置里的服务商和地址对不对。"
+                : "选一个模型，我们就可以开始了。"}
       </p>
       <div className="empty__openers">
-        <button type="button" className="opener opener--primary" onClick={() => void openSettings()}>
+        {hasKey &&
+          Array.isArray(models) &&
+          models.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className="opener opener--primary"
+              onClick={() => useConfigStore.getState().patch({ model: id })}
+            >
+              {id}
+            </button>
+          ))}
+        {hasKey && failed && (
+          <button type="button" className="opener opener--primary" onClick={fetchModels}>
+            再试一次
+          </button>
+        )}
+        {/* Settings is the fix for a missing key, and the escape hatch
+            otherwise — never the only door. */}
+        <button
+          type="button"
+          className={`opener${hasKey ? "" : " opener--primary"}`}
+          onClick={() => void openSettings()}
+        >
           打开设置
         </button>
       </div>
