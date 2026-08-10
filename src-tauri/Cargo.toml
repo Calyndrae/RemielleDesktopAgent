@@ -43,16 +43,35 @@ serde_json = "1"
 thiserror = "2"
 log = "0.4"
 sys-locale = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", features = ["sync", "time"] }
 
-# rustls rather than the platform TLS stack: one less thing that behaves
-# differently between the Windows target and Linux CI.
+# The platform TLS stack on the desktop targets, rustls elsewhere.
+#
+# This used to be rustls everywhere ("one less thing that differs from Linux
+# CI"), and that reasoning lost to a measurement: on the author's own network —
+# a Karing/sing-box TUN of the kind DeepSeek's real users overwhelmingly sit
+# behind — the tunnel fingerprints TLS ClientHellos, and rustls's handshake to
+# api.deepseek.com was reset in ~74 ms while SecureTransport's sailed through
+# to an HTTP 401 from the same binary in the same second. A chat app that
+# cannot reach its default provider on the networks its users actually have is
+# not made better by a tidier CI matrix. Browsers' TLS stacks are what these
+# middleboxes are tuned to allow; the platform stack is the closest thing to
+# that. No code selects a backend — reqwest defaults to whichever feature is
+# compiled in, so each target gets the right one from here alone.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "stream",
+  "native-tls",
+] }
+
+[target.'cfg(not(any(target_os = "macos", target_os = "windows")))'.dependencies]
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "stream",
   "rustls-tls",
 ] }
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
-tokio = { version = "1", features = ["sync", "time"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
