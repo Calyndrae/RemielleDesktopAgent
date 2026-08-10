@@ -115,6 +115,13 @@ export const ipc = {
     invoke<string[]>("list_models", { providerId, baseUrl }),
 
   /**
+   * Puts one line into the app's log file. For the frontend's own anomaly
+   * reports — the log is the artifact a user sends when something looks
+   * wrong, and the webview console does not survive to be looked at.
+   */
+  frontendNote: (message: string) => invoke<void>("frontend_note", { message }),
+
+  /**
    * One unprompted line, generated fresh.
    *
    * Deliberately not a template with slots. A companion whose greetings are

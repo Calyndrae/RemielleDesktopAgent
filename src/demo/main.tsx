@@ -456,3 +456,6 @@ applyTheme("auto");
 const container = document.getElementById("root");
 if (!container) throw new Error("demo root element is missing");
 createRoot(container).render(<Demo />);
+
+// Debug handle for driving the store from a browser console; dev-demo only.
+(window as unknown as { __chat?: typeof useChatStore }).__chat = useChatStore;

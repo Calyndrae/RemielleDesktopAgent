@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { DEFAULT_FLIGHT, flightPose, poseToTransform } from "@/anim/parabola";
-import type { OverlayGeometry } from "@/lib/ipc";
+import { ipc, type OverlayGeometry } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
 import { useChatStore } from "@/state/chat";
 import { getSpriteFrame } from "../spritePosition";
@@ -86,6 +86,8 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
 
   const rootRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Last logged transcript-void gap, so a stable void logs once, not per chunk. */
+  const lastVoidGap = useRef(0);
 
   const visible = phase !== "closed";
   // During the close flight the panel is a flying object, not a surface: it
@@ -268,6 +270,38 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
     const element = scrollRef.current;
     if (!element) return;
     element.scrollTop = element.scrollHeight;
+
+    /*
+     * Void detector. A user showed a transcript that scrolled a full panel
+     * past its last message into nothing — in the WKWebView build only, so no
+     * browser tooling could see it. When the scrollable height exceeds the
+     * measured content by more than a bubble's worth, describe the children
+     * into the log file and let the log say which element is lying.
+     */
+    const top = element.getBoundingClientRect().top;
+    const contentBottom = [...element.children].reduce(
+      (max, child) => Math.max(max, child.getBoundingClientRect().bottom),
+      top,
+    ) - top + element.scrollTop;
+    // Floored at clientHeight: a transcript shorter than the panel leaves
+    // scrollHeight clamped to the viewport, and the empty space under a short
+    // conversation is not a void — the first version of this check logged
+    // every young stream as one.
+    const gap = element.scrollHeight - Math.max(contentBottom, element.clientHeight);
+    if (gap > 60 && gap !== lastVoidGap.current) {
+      lastVoidGap.current = gap;
+      const kids = [...element.children]
+        .map((child) => {
+          const box = child.getBoundingClientRect();
+          return `${child.className.toString().split(" ")[0]}=${Math.round(box.height)}@${Math.round(box.top - top + element.scrollTop)}`;
+        })
+        .join(" ");
+      void ipc
+        .frontendNote(
+          `transcript void: scrollH=${element.scrollHeight} clientH=${element.clientHeight} contentBottom=${Math.round(contentBottom)} gap=${Math.round(gap)} kids: ${kids}`,
+        )
+        .catch(() => {});
+    }
 
     const sync = () =>
       element.classList.toggle(

@@ -20,6 +20,22 @@ fn quit_app<R: Runtime>(app: AppHandle<R>) {
     app.exit(0);
 }
 
+/// Lets the webview put one line into the log file.
+///
+/// The frontend can detect its own anomalies — a transcript reporting more
+/// scrollable height than it has content, a layout that measured wrong — but
+/// it has nowhere durable to say so: its console vanishes with the process.
+/// The log file is what a user actually sends when something looks off, so
+/// the note belongs there, next to the backend's account of the same moment.
+#[tauri::command]
+fn frontend_note(message: String) {
+    let mut line: String = message.chars().take(2000).collect();
+    if line.len() < message.len() {
+        line.push('…');
+    }
+    log::info!("frontend: {line}");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -107,6 +123,7 @@ pub fn run() {
             llm::ambient_line,
             search::verify_search,
             quit_app,
+            frontend_note,
         ])
         .setup(|app| {
             // An agent, not an application.
