@@ -19,7 +19,6 @@ import { MAX_SCALE, MIN_SCALE, useSpriteStore } from "@/state/sprite";
 import { attachSettingsSync } from "@/state/sync";
 import {
   currentProvider,
-  DEFAULT_SYSTEM_PROMPT,
   searchAvailable,
   SEARCH_ACCOUNT,
   useConfigStore,
@@ -613,37 +612,28 @@ export function SettingsApp() {
         </div>
 
         <label className="field">
-          <span className="field__label">说话方式</span>
+          <span className="field__label">额外要求（可选）</span>
           {/*
-            Renamed from 「人格设定」, which promised more than this box gives and
-            more than it should. Who she is now lives in the program and is sent
-            with every message whatever this says; what is left here is manner
-            and voice. The hint spells that out, because someone who clears this
-            box deserves to know what they have and have not changed.
+            Was 「说话方式」 while the voice text lived here as the default —
+            which meant clearing the box silenced her manner, and one user met
+            a Remielle who knew her own name but talked like a stock
+            assistant. Identity AND voice are in the program now; this box is
+            genuinely optional extra instruction, and empty is the normal
+            state rather than a mistake.
           */}
           <span className="field__hint">
-            她是谁写在程序里，改不掉，也不该改 —— 这台桌宠从动画到名字都是她。
-            这里只管她怎么说话：语气、分寸、话多话少。清空就是不加额外要求，她还是她。
+            她是谁、怎么说话，都写在程序里，改不掉也不会丢 ——
+            这台桌宠从动画到名字都是她。这里是给她的额外要求：
+            比如「回答尽量短」「多用英文」。留空最常见，她还是她。
           </span>
           <textarea
             className="control control--area"
-            rows={7}
+            rows={5}
             value={config.systemPrompt}
             onChange={(event) =>
               useConfigStore.getState().patch({ systemPrompt: event.target.value })
             }
           />
-          <div className="keyrow">
-            <button
-              type="button"
-              className="btn"
-              onClick={() =>
-                useConfigStore.getState().patch({ systemPrompt: DEFAULT_SYSTEM_PROMPT })
-              }
-            >
-              恢复默认
-            </button>
-          </div>
         </label>
       </section>
 

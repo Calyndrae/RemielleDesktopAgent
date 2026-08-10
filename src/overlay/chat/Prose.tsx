@@ -58,6 +58,21 @@ export function preprocessTex(source: string): string {
       index % 2 === 1
         ? part
         : part
+            /*
+             * Single-dollar pairs, but only when the body is shaped like TeX.
+             * Models write `$P(A|B)=\dfrac{P(B|A)P(A)}{P(B)}$` no matter what
+             * the delimiters are supposed to be, and printing that raw is a
+             * broken answer; but 「股价 $150，微软 $300」 must stay prose.
+             * The discriminator is the characters TeX runs on — \ ^ _ { } = —
+             * none of which appear between two prices in a sentence. Runs
+             * before the \(...\) rewrites so its lookarounds can still tell
+             * a lone $ from a $$ the model wrote itself.
+             */
+            .replace(
+              /(?<!\$)\$(?!\$)([^$\n]{1,200}?)(?<!\$)\$(?!\$)/g,
+              (whole: string, body: string) =>
+                /[\\^_{}=]/.test(body) ? `$$${body}$$` : whole,
+            )
             .replace(/\\\[([\s\S]+?)\\\]/g, (_, body: string) => `\n$$\n${body}\n$$\n`)
             .replace(/\\\((.+?)\\\)/g, (_, body: string) => `$$${body}$$`),
     )

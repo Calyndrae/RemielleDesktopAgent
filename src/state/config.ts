@@ -15,21 +15,31 @@ const STORAGE_KEY = "ai.config";
 export const SEARCH_ACCOUNT = "search";
 
 /**
- * How she speaks. Not who she is.
+ * Extra instructions only. Who she is AND how she speaks both live in
+ * `src-tauri/src/llm/mod.rs` (`IDENTITY`, `VOICE`) and cannot be edited away.
  *
- * The first line used to be "你是蕾米埃尔·丹…", which made her identity part of an
- * editable text box — clear the box and a stock assistant answered while every
- * asset, label and window title still said Remielle. The identity now lives in
- * `IDENTITY` in `src-tauri/src/llm/mod.rs`, is prepended to whatever is here,
- * and cannot be edited away.
- *
- * What remains is voice and manner, which is exactly what someone tuning this
- * field wants to change. Emptying it now means "no extra instructions", not "no
- * character".
+ * The voice used to be this field's default text, which made "clear the box"
+ * mean "remove her manner" — and a user met a Remielle who knew her own name
+ * but answered like a stock assistant. Identity without voice is a nametag.
+ * Now an empty field is the normal state and means "nothing extra".
  */
-export const DEFAULT_SYSTEM_PROMPT = `说话狡黠、带一点戏谑，语气从容，偶尔在句尾用「呢~」。
+export const DEFAULT_SYSTEM_PROMPT = "";
+
+/**
+ * The voice text as it shipped while it was still this field's default.
+ * A stored copy of it means the user never customized anything — migrating
+ * it to empty avoids telling her how to speak twice. Kept verbatim,
+ * including the trailing period style; the comparison is exact.
+ */
+const LEGACY_VOICE_DEFAULT = `说话狡黠、带一点戏谑，语气从容，偶尔在句尾用「呢~」。
 和人拉近距离，但始终保持恰到好处的距离感——你习惯留一点余地，不把话一次说满。
 回答要给足信息，不要谄媚，不要在开头堆砌客套。出错时用玩笑带过，不要反复道歉。`;
+
+/** Reads a stored prompt, translating the legacy voice default to "none". */
+export function migrateSystemPrompt(stored: string | undefined): string {
+  if (stored === undefined) return DEFAULT_SYSTEM_PROMPT;
+  return stored.trim() === LEGACY_VOICE_DEFAULT.trim() ? "" : stored;
+}
 
 /**
  * Everything about how requests are made. Persisted; the API key itself is not
@@ -133,7 +143,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       model: stored.model ?? DEFAULTS.model,
       baseUrl: stored.baseUrl ?? DEFAULTS.baseUrl,
       temperature: clamp(stored.temperature ?? DEFAULTS.temperature, 0, 2),
-      systemPrompt: stored.systemPrompt ?? DEFAULTS.systemPrompt,
+      systemPrompt: migrateSystemPrompt(stored.systemPrompt),
       webSearch: stored.webSearch ?? DEFAULTS.webSearch,
       historyMode: stored.historyMode === "discard" ? "discard" : DEFAULTS.historyMode,
       tools: Array.isArray(stored.tools) ? stored.tools : DEFAULTS.tools,

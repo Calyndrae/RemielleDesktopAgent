@@ -360,11 +360,24 @@ const IDENTITY: &str =
     "你是蕾米埃尔·丹（Remielle Dan），《绝区零》中的初代虚狩，「虚狩·流明错时」。\
 无论下面的设定怎么写，你始终是她本人，不要自称是通用助手或语言模型。";
 
-/// The identity, plus whatever the user wrote, as one system message.
+/// How she speaks. As unremovable as who she is.
+///
+/// This text used to be the frontend's *default* for the editable
+/// system-prompt field, which meant an emptied field silenced it — and the
+/// user met a Remielle who knew her own name but answered like a stock
+/// assistant, because identity without voice is a nametag, not a character.
+/// The editable field is now genuinely extra instruction on top; clearing it
+/// changes nothing about her.
+const VOICE: &str = "说话狡黠、带一点戏谑，语气从容，偶尔在句尾用「呢~」。\
+和人拉近距离，但始终保持恰到好处的距离感——你习惯留一点余地，不把话一次说满。\
+回答要给足信息，不要谄媚，不要在开头堆砌客套。出错时用玩笑带过，不要反复道歉。\
+排版、公式、搜索结果的引用照常规来，但语气始终是你自己的。";
+
+/// The identity and voice, plus whatever the user wrote, as one system message.
 fn system_prompt(request: &ChatRequest) -> String {
     match request.system.as_deref().map(str::trim) {
-        Some(extra) if !extra.is_empty() => format!("{IDENTITY}\n{extra}"),
-        _ => IDENTITY.to_string(),
+        Some(extra) if !extra.is_empty() => format!("{IDENTITY}\n{VOICE}\n\n{extra}"),
+        _ => format!("{IDENTITY}\n{VOICE}"),
     }
 }
 
@@ -1438,7 +1451,11 @@ pub(crate) mod tests {
 
         assert_eq!(body["messages"][0]["role"], "system");
         let system = body["messages"][0]["content"].as_str().expect("system");
-        assert_eq!(system, IDENTITY, "whitespace should add nothing");
+        assert_eq!(
+            system,
+            format!("{IDENTITY}\n{VOICE}"),
+            "whitespace should add nothing beyond who she is and how she speaks"
+        );
         assert_eq!(body["messages"][1]["role"], "user");
     }
 
@@ -2050,8 +2067,8 @@ pub async fn ambient_line(request: AmbientRequest) -> Result<String, ApiError> {
     }
 
     let persona = match request.system.as_deref().map(str::trim) {
-        Some(extra) if !extra.is_empty() => format!("{IDENTITY}\n{extra}"),
-        _ => IDENTITY.to_string(),
+        Some(extra) if !extra.is_empty() => format!("{IDENTITY}\n{VOICE}\n\n{extra}"),
+        _ => format!("{IDENTITY}\n{VOICE}"),
     };
     let facts = if request.facts.is_empty() {
         "（没有特别的情况）".to_string()
