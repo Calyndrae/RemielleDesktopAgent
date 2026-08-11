@@ -56,3 +56,5 @@ and they are reproducible from source with one command. The folders and their
 when the artefacts do not.
 
 - 2026-08-11: `src/lib/markdownLite.ts` + test — superseded by `src/overlay/chat/Prose.tsx` (react-markdown + KaTeX). Recover: `git show ba4a270:src/lib/markdownLite.ts`.
+
+- 2026-08-11: ~/Downloads/Win11_25H2_ARM64.iso (7.7GB, Windows 11 25H2 zh-CN ARM64 installer) deleted after the VM install completed. Recovery: re-download from https://www.microsoft.com/en-us/software-download/windows11arm64 (same edition/language flow).
