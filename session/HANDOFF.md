@@ -454,3 +454,45 @@ To recreate on a new machine: openssl req -x509 with
 /usr/bin/codesign`, `security add-trusted-cert -p codeSign`. This is NOT
 distribution signing — Gatekeeper on other machines still warns; that is
 still §9's Apple-Developer decision.
+
+---
+
+## 10. State as of 2026-08-12 (post-§5 era)
+
+Everything in §5 shipped, then two days of user-reported fixes reshaped core
+plumbing. The commits tell the story; the short version:
+
+- **Search** is Cyrene-style preflight (router → keyless backends → numbered
+  citations). The router and the ambient greeting both needed *large*
+  max_tokens (400/600) because deepseek-v4-flash reasons inside the budget and
+  returns empty content when starved. This failure mode looks like "feature
+  silently does nothing" — check it FIRST for any new model-driven feature.
+- **Replies render** markdown + KaTeX (Prose.tsx); citations are favicon chips
+  by number; remark-cjk-friendly handles CJK emphasis; single-$ math only when
+  the body looks like TeX. The "transcript void" (phantom scrollHeight,
+  WKWebView-only, correlates with display math) is NOT fixed — a witness in
+  ChatPanel.tsx logs per-block forensics to the app log when it recurs.
+- **Her voice lives in Rust** (`VOICE` beside `IDENTITY` in llm/mod.rs). The
+  editable prompt field is extra instructions only; the old voice-as-default
+  text migrates to empty (config.ts migrateSystemPrompt).
+- **macOS keys: the Keychain is gone.** keys.json (0600) in the app data dir,
+  in-process cache, legacy migration on first read. Zero prompts across
+  rebuilds — the user had clicked 始终允许 30+ times, which was the design
+  review. Windows keeps DPAPI keyring. secrets.rs docs carry the reasoning.
+- **macOS builds are signed** with the local cert "Remielle Local Signing" via
+  scripts/sign-macos.sh after every build (ad-hoc CDHash churn was breaking
+  everything that keyed on the signature).
+- **She greets at boot** (~90s, useAmbient.ts opening-line effect) and the
+  ambient path logs spoke/failed/skipped to the app log via frontend_note.
+- **Windows build**: UTM VM "Windows" (Win11 25H2 ARM64), installed unattended
+  (autounattend answer ISO — the whole flow is scripts/win/README.md).
+  Provisioning (VS Build Tools ARM64+x64, Rust aarch64 host + x86_64 target,
+  Node/pnpm) runs headlessly through the QEMU guest agent; repo ships over
+  HTTP from the Mac at 192.168.64.1:8765. As of this writing the first
+  provisioning run is in flight; the first Windows build has not yet happened.
+- **Pending**: the transcript void (witness armed); §9 real signing decision
+  (the local cert fixes dev, not distribution); Windows build artefacts to
+  land in program/windows once the VM builds.
+
+Watch the disk: the VM's qcow2 is ~29GB and src-tauri/target regrows to ~6GB
+per full build. The two do not fit comfortably at the same time on this Mac.

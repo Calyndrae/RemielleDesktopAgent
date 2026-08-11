@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { platform } from "@tauri-apps/plugin-os";
+
+/**
+ * Which storage story the key hint tells. Resolved once — the platform does
+ * not change mid-session — and defensively, because the layout harness mounts
+ * this component in a plain browser where the Tauri bridge is absent.
+ */
+const onMac = (() => {
+  try {
+    return platform() === "macos";
+  } catch {
+    return false;
+  }
+})();
 
 import {
   describeError,
@@ -360,8 +374,9 @@ export function SettingsApp() {
             )}
 
             <span className="field__hint">
-              密钥保存在 Windows 凭据管理器（DPAPI），绑定你的 Windows 账户 ——
-              复制到别的机器解不开。界面永远读不回密钥内容，只知道它存不存在。
+              {onMac
+                ? "密钥存在这台电脑上一个只有你的账户能读的文件里 —— 不走钥匙串，不会弹密码框。界面永远读不回密钥内容，只知道它存不存在。"
+                : "密钥保存在 Windows 凭据管理器（DPAPI），绑定你的 Windows 账户 —— 复制到别的机器解不开。界面永远读不回密钥内容，只知道它存不存在。"}
               {provider.docsUrl && (
                 <>
                   {" "}
