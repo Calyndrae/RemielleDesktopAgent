@@ -24,9 +24,13 @@ if (-not (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTo
 } else { Stage 'VS Build Tools already present' }
 
 # --- Rust, native ARM64 host, plus the x64 cross target ---
+# Downloads come from the Mac over the host-only network: the guest's outbound
+# HTTPS rides the host's tunnel, which eats these hosts' handshakes the same
+# way it ate rustls' (see the TLS note in src-tauri/Cargo.toml). The Mac
+# fetches them with its own stack and serves them next to the repo.
 if (-not (Test-Path "$env:USERPROFILE\.cargo\bin\cargo.exe")) {
   Stage 'downloading rustup-init (aarch64)'
-  Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe' -OutFile "$dl\rustup-init.exe"
+  Invoke-WebRequest -Uri 'http://192.168.64.1:8765/rustup-init.exe' -OutFile "$dl\rustup-init.exe"
   Stage 'installing rust'
   & "$dl\rustup-init.exe" -y --default-host aarch64-pc-windows-msvc --profile minimal | Out-File -Append -Encoding ascii $log
   & "$env:USERPROFILE\.cargo\bin\rustup.exe" target add x86_64-pc-windows-msvc | Out-File -Append -Encoding ascii $log
@@ -36,7 +40,7 @@ if (-not (Test-Path "$env:USERPROFILE\.cargo\bin\cargo.exe")) {
 # --- Node LTS (ARM64) + corepack/pnpm ---
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Stage 'downloading node arm64'
-  Invoke-WebRequest -Uri 'https://nodejs.org/dist/v22.14.0/node-v22.14.0-arm64.msi' -OutFile "$dl\node.msi"
+  Invoke-WebRequest -Uri 'http://192.168.64.1:8765/node.msi' -OutFile "$dl\node.msi"
   Stage 'installing node'
   Start-Process msiexec -ArgumentList '/i',"$dl\node.msi",'/qn' -Wait
   $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
