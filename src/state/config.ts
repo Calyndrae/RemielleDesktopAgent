@@ -159,29 +159,28 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     });
 
     /*
-     * Deliberately NOT awaited, and the reason is a photograph: has_key hits
-     * the macOS Keychain, and when the app's code signature changes (every
-     * ad-hoc rebuild, every update) the Keychain raises a password prompt per
-     * stored item. Awaiting this meant the entire boot — placement, show,
-     * everything — sat frozen behind a modal until the user typed a password.
-     * She appears first; the "configured" ticks arrive whenever the Keychain
-     * answers, and the UI reads as unconfigured in the meantime, which is
-     * true.
-     */
-    void get().refreshConfigured();
-
-    /*
-     * Warm the current provider's key, off the critical path.
+     * Warm the key first, THEN refresh — order is load-bearing.
      *
-     * If a Keychain approval is owed, this is when to spend it: the user just
-     * launched the app and is looking at it. The alternative is what the
-     * ambient log recorded — the first read happening ninety seconds later
-     * inside her unprompted greeting, which died as `noKey` while a password
-     * dialog waited behind everything else. Never awaited, for the same
-     * reason `refreshConfigured` is not.
+     * On macOS a key stored by an older build migrates out of the Keychain
+     * into the key file the first time it is read, and `warmKey` is that
+     * first read. `refreshConfigured` asks `has_key`, which on macOS only
+     * consults the (prompt-free) key file — so if it runs before the
+     * migration it sees nothing, marks the provider unconfigured, and never
+     * re-runs. That is exactly what happened once: the boot-time greeting was
+     * skipped as "not configured" ninety seconds after a migration that had
+     * already succeeded. Warming before refreshing closes the window.
+     *
+     * Neither is awaited: the whole point is that boot — placement, show —
+     * does not wait on credential I/O. `configured` fills in a beat later and
+     * the UI reads as unconfigured until it does, which is honest.
      */
     const provider = stored.provider ?? DEFAULTS.provider;
-    if (provider) void ipc.warmKey(provider).catch(() => {});
+    const refresh = () => void get().refreshConfigured();
+    if (provider) {
+      void ipc.warmKey(provider).then(refresh, refresh);
+    } else {
+      refresh();
+    }
   },
 
   refreshConfigured: async () => {
