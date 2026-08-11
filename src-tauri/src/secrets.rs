@@ -234,6 +234,24 @@ pub async fn delete_key(account: String) -> Result<(), SecretError> {
     store::delete(&account)
 }
 
+/// Reads a key into the process cache, and says whether it worked.
+///
+/// Called once at startup for the configured provider. Everything that
+/// *needs* a key already reads it lazily — but the first such read is often
+/// her unprompted greeting, ninety seconds after launch, and if the Keychain
+/// chooses that moment to ask for a password the greeting dies as `noKey`
+/// while a dialog waits behind the other windows. That is exactly what the
+/// ambient log caught. Warming here moves the one prompt to the moment the
+/// user just launched the app and is looking at the screen; by the time she
+/// has something to say, the answer is already in hand.
+///
+/// Returns a bool rather than the key. Nothing here ever hands a secret to
+/// the webview — see the module docs.
+#[tauri::command]
+pub async fn warm_key(account: String) -> bool {
+    read(&account).is_ok()
+}
+
 /// A masked hint for the settings UI, e.g. `sk-…7f3a`.
 ///
 /// Served from the in-process cache only. Reading the store here would raise

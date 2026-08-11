@@ -109,6 +109,7 @@ pub fn run() {
             assets::list_packs,
             secrets::store_key,
             secrets::has_key,
+            secrets::warm_key,
             secrets::delete_key,
             secrets::key_hint,
             llm::provider::list_providers,

@@ -169,6 +169,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
      * true.
      */
     void get().refreshConfigured();
+
+    /*
+     * Warm the current provider's key, off the critical path.
+     *
+     * If a Keychain approval is owed, this is when to spend it: the user just
+     * launched the app and is looking at it. The alternative is what the
+     * ambient log recorded — the first read happening ninety seconds later
+     * inside her unprompted greeting, which died as `noKey` while a password
+     * dialog waited behind everything else. Never awaited, for the same
+     * reason `refreshConfigured` is not.
+     */
+    const provider = stored.provider ?? DEFAULTS.provider;
+    if (provider) void ipc.warmKey(provider).catch(() => {});
   },
 
   refreshConfigured: async () => {

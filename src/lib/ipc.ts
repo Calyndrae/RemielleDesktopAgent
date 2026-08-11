@@ -101,6 +101,14 @@ export const ipc = {
   storeKey: (account: string, key: string) =>
     invoke<void>("store_key", { account, key }),
   hasKey: (account: string) => invoke<boolean>("has_key", { account }),
+  /**
+   * Reads a key into the backend's process cache. Never returns it.
+   *
+   * Called once at startup so the single Keychain approval lands while the
+   * user is watching their own launch, rather than ninety seconds later
+   * underneath her greeting. See `warm_key` in src-tauri/src/secrets.rs.
+   */
+  warmKey: (account: string) => invoke<boolean>("warm_key", { account }),
   deleteKey: (account: string) => invoke<void>("delete_key", { account }),
   keyHint: (account: string) => invoke<string | null>("key_hint", { account }),
 
