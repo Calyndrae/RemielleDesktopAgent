@@ -9,16 +9,19 @@
 //! UI layer, or a malicious asset pack that manages to run script, still cannot
 //! exfiltrate the user's key.
 //!
-//! ## What the OS store does and does not protect against
+//! ## What the stores do and do not protect against
 //!
 //! On Windows the credential manager is backed by DPAPI: the secret is
 //! encrypted with material derived from the logged-in user's account, so
 //! copying the file to another machine or reading it from another user account
-//! yields nothing. It does **not** protect against a program already running as
-//! that same user — such a program can ask the credential manager for the
-//! secret exactly as this app does. That is the ceiling for any local storage
-//! that unlocks without a passphrase, and it is worth being straight about
-//! rather than describing this as "encrypted" and leaving it there.
+//! yields nothing. On macOS the store is a `0600` file in the app's data
+//! directory — same boundary, enforced by file permissions instead of DPAPI
+//! (and *not* the Keychain; the macOS store module explains what the Keychain
+//! did to earn its removal). Neither protects against a program already
+//! running as the same user — such a program can read the secret exactly as
+//! this app does. That is the ceiling for any local storage that unlocks
+//! without a passphrase, and it is worth being straight about rather than
+//! describing this as "encrypted" and leaving it there.
 
 use serde::Serialize;
 
@@ -49,7 +52,7 @@ impl Serialize for SecretError {
 // Platform stores
 // ---------------------------------------------------------------------------
 
-#[cfg(any(target_os = "windows", target_os = "macos"))]
+#[cfg(target_os = "windows")]
 mod store {
     use super::{SecretError, SERVICE};
 
@@ -79,33 +82,134 @@ mod store {
         }
     }
 
-    /// Whether an item exists, **without touching its data**.
-    ///
-    /// The distinction is the whole ballgame on macOS: the Keychain ACL
-    /// guards the secret's *data*, and reading data from a binary whose code
-    /// signature changed — every ad-hoc rebuild, every update — raises a
-    /// password prompt per item. An attribute-only search never consults the
-    /// ACL, so "is a key stored?" is answerable silently. The boot-time sweep
-    /// used to answer it by reading every stored key, which is what made
-    /// launching after an update feel like a password-entry minigame.
-    #[cfg(target_os = "macos")]
-    pub fn exists(account: &str) -> bool {
-        use security_framework::item::{ItemClass, ItemSearchOptions, Limit};
-        ItemSearchOptions::new()
-            .class(ItemClass::generic_password())
-            .service(super::SERVICE)
-            .account(account)
-            .limit(Limit::Max(1))
-            .search()
-            .map(|items| !items.is_empty())
-            .unwrap_or(false)
-    }
-
     /// Windows' credential manager is DPAPI-backed and never prompts, so the
     /// straightforward read doubles as the existence check.
-    #[cfg(target_os = "windows")]
     pub fn exists(account: &str) -> bool {
         get(account).is_ok()
+    }
+}
+
+/// macOS: a file only this user can read, **not** the Keychain.
+///
+/// The Keychain was the obvious choice and it failed the person using the
+/// app. Its per-app ACL binds an approval to the exact signed binary — and
+/// for a build without an Apple-issued identity there is no stable thing to
+/// bind to, so *every rebuild and every update voided every approval*. The
+/// user counted thirty-plus 「始终允许」 clicks before the design was
+/// admitted to be wrong; a security wall the user is trained to click
+/// through hundreds of times protects nothing.
+///
+/// What replaces it: `keys.json` in the app's data directory, `0600`, dir
+/// `0700`. That protects against every *other account* on the machine —
+/// which is exactly the protection Windows' DPAPI store gives — and it does
+/// so with zero prompts across rebuilds, updates and reinstalls. What it
+/// does not protect against: another program running as this same user.
+/// Neither did the Keychain in practice, once the user had been conditioned
+/// to approve every dialog. The module docs at the top carry the same
+/// honesty for Windows.
+///
+/// Keys stored by older builds migrate out of the Keychain on first read —
+/// at most one final prompt per key, ever.
+#[cfg(target_os = "macos")]
+mod store {
+    use super::{SecretError, SERVICE};
+    use std::collections::HashMap;
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+
+    fn path() -> Result<PathBuf, SecretError> {
+        if let Ok(test_override) = std::env::var("REMIELLE_KEYS_PATH") {
+            return Ok(PathBuf::from(test_override));
+        }
+        dirs::data_dir()
+            .map(|d| d.join(SERVICE).join("keys.json"))
+            .ok_or_else(|| SecretError::Backend("no data directory".into()))
+    }
+
+    fn load() -> Result<HashMap<String, String>, SecretError> {
+        let p = path()?;
+        match std::fs::read(&p) {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|e| SecretError::Backend(format!("keys.json unreadable: {e}"))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
+            Err(e) => Err(SecretError::Backend(e.to_string())),
+        }
+    }
+
+    fn save(map: &HashMap<String, String>) -> Result<(), SecretError> {
+        let p = path()?;
+        let dir = p.parent().ok_or_else(|| SecretError::Backend("no parent dir".into()))?;
+        std::fs::create_dir_all(dir).map_err(|e| SecretError::Backend(e.to_string()))?;
+        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+
+        // Write-then-rename, so a crash mid-write can never leave a truncated
+        // file where every stored key used to be.
+        let tmp = p.with_extension("json.tmp");
+        {
+            let mut f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&tmp)
+                .map_err(|e| SecretError::Backend(e.to_string()))?;
+            let _ = f.set_permissions(std::fs::Permissions::from_mode(0o600));
+            f.write_all(
+                serde_json::to_vec_pretty(map)
+                    .map_err(|e| SecretError::Backend(e.to_string()))?
+                    .as_slice(),
+            )
+            .map_err(|e| SecretError::Backend(e.to_string()))?;
+        }
+        std::fs::rename(&tmp, &p).map_err(|e| SecretError::Backend(e.to_string()))
+    }
+
+    /// One shot at the old Keychain item, then never again this run.
+    ///
+    /// Migration is per-read rather than a boot sweep on purpose: a sweep
+    /// would raise every remaining prompt at once, which is the exact
+    /// experience being deleted.
+    fn migrate_from_keychain(account: &str) -> Option<String> {
+        let entry = keyring::Entry::new(SERVICE, account).ok()?;
+        let secret = entry.get_password().ok()?;
+        log::info!("secrets: migrated '{account}' from Keychain to the key file");
+        // Best-effort cleanup; a leftover Keychain item is inert either way.
+        let _ = entry.delete_credential();
+        Some(secret)
+    }
+
+    pub fn set(account: &str, secret: &str) -> Result<(), SecretError> {
+        let mut map = load()?;
+        map.insert(account.to_string(), secret.to_string());
+        save(&map)
+    }
+
+    pub fn get(account: &str) -> Result<String, SecretError> {
+        let mut map = load()?;
+        if let Some(secret) = map.get(account) {
+            return Ok(secret.clone());
+        }
+        if let Some(secret) = migrate_from_keychain(account) {
+            map.insert(account.to_string(), secret.clone());
+            save(&map)?;
+            return Ok(secret);
+        }
+        Err(SecretError::NotFound(account.to_string()))
+    }
+
+    pub fn delete(account: &str) -> Result<(), SecretError> {
+        let mut map = load()?;
+        if map.remove(account).is_some() {
+            save(&map)?;
+        }
+        Ok(())
+    }
+
+    /// Existence never consults the Keychain: un-migrated legacy keys report
+    /// absent until something actually reads them, which keeps this free of
+    /// prompts — the property the whole redesign exists for.
+    pub fn exists(account: &str) -> bool {
+        load().map(|m| m.contains_key(account)).unwrap_or(false)
     }
 }
 
@@ -281,14 +385,29 @@ fn mask(key: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The commands went async to keep Keychain prompts off the main thread;
-    /// the tests still exercise them synchronously through a local runtime.
+    /// The commands went async to keep credential-store prompts off the main
+    /// thread; the tests still exercise them synchronously through a local
+    /// runtime.
     fn wait<F: std::future::Future>(future: F) -> F::Output {
         tauri::async_runtime::block_on(future)
     }
 
+    /// Serializes the store tests and points them at a scratch file, so they
+    /// never touch the user's real keys and never race each other over one
+    /// read-modify-write JSON file.
+    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn isolate() -> std::sync::MutexGuard<'static, ()> {
+        let guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var(
+            "REMIELLE_KEYS_PATH",
+            std::env::temp_dir().join(format!("remielle-test-keys-{}.json", std::process::id())),
+        );
+        guard
+    }
+
     #[test]
     fn stores_and_reports_presence_without_revealing() {
+        let _lock = isolate();
         let account = "test-store-presence";
         let _ = wait(delete_key(account.to_string()));
 
@@ -308,6 +427,7 @@ mod tests {
 
     #[test]
     fn trims_surrounding_whitespace() {
+        let _lock = isolate();
         // Pasting from a terminal or a web page routinely carries a newline.
         let account = "test-store-trim";
         let _ = wait(delete_key(account.to_string()));
@@ -322,6 +442,7 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_whitespace_only_keys() {
+        let _lock = isolate();
         assert!(matches!(
             wait(store_key("test-empty".into(), "   ".into())),
             Err(SecretError::Empty)
