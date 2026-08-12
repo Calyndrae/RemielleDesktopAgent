@@ -7,7 +7,7 @@
 | File | Platform | Notes |
 |---|---|---|
 | `Remielle Desktop Agent_0.1.0_aarch64.dmg` | macOS (Apple Silicon) | Installer. Unsigned — see below. |
-| `Remielle Desktop Agent_0.1.0_x64.exe` | Windows 10/11 (Intel/AMD) | Portable executable — no install, just run. |
+| `Remielle Desktop Agent_0.1.0_x64.exe` | Windows 10/11 (Intel/AMD) | Portable executable — no install, just run. **Most people want this one.** |
 | `Remielle Desktop Agent_0.1.0_arm64.exe` | Windows on ARM | Portable executable. |
 
 ## First run
@@ -40,3 +40,20 @@ your machine — never sent anywhere except to the provider you chose.
 - **No Windows installer yet.** The `.exe` files are portable; the NSIS
   installer step needs a build host where 32-bit tooling runs.
 - macOS Intel is untested; Linux is unbuilt.
+
+## Verifying your download
+
+`SHA256SUMS.txt` lists the checksum of every file here.
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt     # macOS / Linux
+```
+```powershell
+Get-FileHash "Remielle Desktop Agent_0.1.0_x64.exe" -Algorithm SHA256   # Windows
+```
+
+## How these were built
+
+macOS on Apple Silicon natively; both Windows binaries in a Windows 11 ARM64 VM
+(`scripts/win/` documents the toolchain and the provisioning script). The x64
+build is a cross-compile from that host — `--target x86_64-pc-windows-msvc`.
