@@ -25,22 +25,22 @@
 //! the tool, not a decision the model gets to make — a model cannot mark its own
 //! call as safe.
 
-//! ## Status
+//! ## How the catalog is organised
 //!
-//! The catalog, the validator and the executors are complete and tested. The
-//! **dispatch loop is not wired yet** — nothing yet puts these schemas into a
-//! request or feeds results back over multiple turns.
+//! One module per domain — `system`, `media` — rather than one file that grows
+//! without shape. A tool's spec lives in [`CATALOG`] here and its implementation
+//! in its domain module; the settings window groups the switches the same way,
+//! so "what can she touch" is answerable by reading either.
 //!
-//! That is deliberate rather than half-done: advertising tools to a model and
-//! then failing to return results is worse than not offering them, because the
-//! model will call them and then apologise for a failure it cannot explain. The
-//! catalog is offered to the model only once the loop exists. `list_tools` is
-//! live already so settings can show what will be available.
+//! The dispatch loop is live: `llm::mod` offers the enabled subset to the model,
+//! runs what it calls through `dispatch`, and feeds results back for up to a
+//! bounded number of rounds.
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 
 pub mod dispatch;
+pub mod media;
 pub mod system;
 
 /// How much the user has to be involved before a tool runs.
@@ -219,6 +219,34 @@ pub const CATALOG: &[ToolSpec] = &[
             // see `catalog_for`. A free-form path here would be a launcher for
             // arbitrary executables, which is the thing being avoided.
             kind: ParamKind::Enum { values: &[] },
+        }],
+    },
+    ToolSpec {
+        name: "media_control",
+        description: "Control whatever media is currently playing on the \
+                      computer — any player that responds to the system media \
+                      keys, including Spotify, Apple Music and browser tabs. \
+                      Use when the user asks to pause, skip, or change volume.",
+        user_label: "控制正在播放的音乐（播放/暂停、切歌、音量）",
+        // Act, not Confirm: pressing pause is as reversible as pressing it
+        // again, and a confirmation prompt for a media key would be the kind
+        // of ceremony that teaches users to click through prompts.
+        risk: Risk::Act,
+        platform: Platform::Desktop,
+        params: &[Param {
+            name: "action",
+            description: "Which transport control to press. Volume steps by \
+                          about 10%.",
+            required: true,
+            kind: ParamKind::Enum {
+                values: &[
+                    "play_pause",
+                    "next",
+                    "previous",
+                    "volume_up",
+                    "volume_down",
+                ],
+            },
         }],
     },
 ];

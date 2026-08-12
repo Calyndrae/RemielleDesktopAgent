@@ -19,6 +19,7 @@
 
 use serde::Serialize;
 
+use super::media;
 use super::system::{self, ToolOutcome};
 use super::{find, validate_call, Risk, ToolError, ToolSpec};
 use crate::llm::toolcall::ToolCall;
@@ -134,6 +135,9 @@ pub fn dispatch(call: &ToolCall, enabled: &[String], allowlist: &[String]) -> Di
         "get_active_window" => system::active_window(),
         "set_system_theme" => system::set_system_theme(text("mode")),
         "security_scan" => system::security_scan(text("scope")),
+        "media_control" => {
+            media::Transport::parse(text("action")).and_then(media::transport)
+        }
         // Both are handled by the app rather than a system call: they change
         // this window, or launch from the user's own allowlist.
         "set_stay_on_top" => Ok(ToolOutcome {
