@@ -484,12 +484,39 @@ plumbing. The commits tell the story; the short version:
   everything that keyed on the signature).
 - **She greets at boot** (~90s, useAmbient.ts opening-line effect) and the
   ambient path logs spoke/failed/skipped to the app log via frontend_note.
-- **Windows build**: UTM VM "Windows" (Win11 25H2 ARM64), installed unattended
-  (autounattend answer ISO — the whole flow is scripts/win/README.md).
-  Provisioning (VS Build Tools ARM64+x64, Rust aarch64 host + x86_64 target,
-  Node/pnpm) runs headlessly through the QEMU guest agent; repo ships over
-  HTTP from the Mac at 192.168.64.1:8765. As of this writing the first
-  provisioning run is in flight; the first Windows build has not yet happened.
+- **Windows builds exist.** Both architectures compiled in the UTM VM on
+  2026-08-12 and are in `program/windows/` + `release/`: x64 (0x8664, 11.6 MB)
+  and ARM64 (0xaa64, 11.3 MB), both verified PE. The Rust backend — DPAPI
+  keyring, Win32 cursor/foreground-window calls, platform dispatch — needed no
+  code changes. `scripts/win/` has the provisioning script and runbook.
+
+  Hard-won lessons, because every one of these cost an hour:
+  1. **Nothing remote survives this network.** rust-lang.org, nodejs.org,
+     rsproxy.cn, GitHub — all flap through the user's tunnel. Everything is
+     staged on the Mac and served at 192.168.64.1:8765: the Rust dist mirror
+     (rewrite channel-rust-stable.toml's URLs + regenerate its .sha256),
+     node's ZIP (the MSI fails silently under the guest agent), the pnpm
+     store, the cargo registry (keyed to plain crates.io, so do NOT point the
+     guest at a mirror), and NSIS.
+  2. **node_modules must be built on the Mac with `node-linker=hoisted` and
+     `symlink=false`**, plus `pnpm.supportedArchitectures` in package.json
+     (NOT .npmrc — pnpm ignores it there). Symlinked stores lose the win32
+     native binaries; hoisted ships them as real files.
+  3. **The guest agent kills long child processes when its RPC wedges**, which
+     silently truncates tar extractions. Run anything slow as a scheduled task
+     (`schtasks /create /ru SYSTEM ... & schtasks /run`) with a file marker.
+  4. **cmd's `if exist` chokes on paths containing `@`** — it reports missing
+     files that are present. Use PowerShell `Test-Path` for node_modules.
+  5. **PowerShell's `-Encoding utf8` writes a BOM**, which Tauri's config
+     parser rejects ("expected value at line 1 column 1"). Author JSON on the
+     Mac and ship it.
+  6. `pnpm build` fails in the guest (`'tsc' is not recognized`) because the
+     Mac-built .bin has no Windows shims. Blank `beforeBuildCommand` and run
+     `node node_modules/vite/bin/vite.js build` then the tauri CLI directly.
+
+- **Not done on Windows**: the NSIS installer (makensis is 32-bit x86 and this
+  ARM VM's emulation fails under SYSTEM — needs an x64 Windows host, or run
+  the bundle step interactively) and code signing.
 - **Pending**: the transcript void (witness armed); §9 real signing decision
   (the local cert fixes dev, not distribution); Windows build artefacts to
   land in program/windows once the VM builds.
