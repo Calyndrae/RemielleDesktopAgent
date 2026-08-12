@@ -42,6 +42,7 @@ use serde::{Deserialize, Serialize};
 pub mod dispatch;
 pub mod media;
 pub mod system;
+pub mod window;
 
 /// How much the user has to be involved before a tool runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -244,6 +245,26 @@ pub const CATALOG: &[ToolSpec] = &[
             // in media.rs that holds them together.
             kind: ParamKind::Enum {
                 values: media::ACTIONS,
+            },
+        }],
+    },
+    ToolSpec {
+        name: "arrange_window",
+        description: "Move or resize the window the user currently has in \
+                      front — minimise it, fill the screen, or put it on the \
+                      left or right half. Only ever affects the foreground \
+                      window, and can never close anything.",
+        user_label: "摆布当前窗口（收起、铺满、靠左/靠右）",
+        // Act: every one of these is undone by dragging the window back, and
+        // nothing here can lose the user's work.
+        risk: Risk::Act,
+        platform: Platform::Desktop,
+        params: &[Param {
+            name: "action",
+            description: "How to arrange the front window.",
+            required: true,
+            kind: ParamKind::Enum {
+                values: window::ACTIONS,
             },
         }],
     },
