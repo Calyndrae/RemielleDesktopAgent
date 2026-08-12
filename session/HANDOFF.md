@@ -514,6 +514,13 @@ plumbing. The commits tell the story; the short version:
      Mac-built .bin has no Windows shims. Blank `beforeBuildCommand` and run
      `node node_modules/vite/bin/vite.js build` then the tauri CLI directly.
 
+- **The Windows build has been RUN** (2026-08-13, in the VM): launches, renders
+  the sprite with a transparent background, and click-through works — a File
+  Explorer window behind her stayed fully usable. Process stable at ~40 MB.
+  Screenshot evidence was taken; no crash, no missing-DLL dialog, no WebView2
+  prompt. Not yet exercised on Windows: chat round-trip, tray menu, settings
+  window, DPAPI key storage.
+
 - **Not done on Windows**: the NSIS installer (makensis is 32-bit x86 and this
   ARM VM's emulation fails under SYSTEM — needs an x64 Windows host, or run
   the bundle step interactively) and code signing.
