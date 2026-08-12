@@ -2,7 +2,23 @@
 
 蕾米埃尔·丹 — a desktop companion that lives on your screen, not in a browser tab.
 
-## Downloads
+## Install in one line
+
+**Windows** (PowerShell — picks x64 or ARM64 for you, verifies the checksum,
+adds a Start Menu entry):
+
+```powershell
+irm https://raw.githubusercontent.com/Calyndrae/RemielleDesktopAgent/main/scripts/install.ps1 | iex
+```
+
+**macOS** (Apple Silicon — installs to /Applications and clears the quarantine
+flag, so she opens without the right-click dance):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Calyndrae/RemielleDesktopAgent/main/scripts/install.sh | sh
+```
+
+Or download a file directly:
 
 | File | Platform | Notes |
 |---|---|---|
