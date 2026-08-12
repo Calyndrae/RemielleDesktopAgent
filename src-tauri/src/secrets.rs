@@ -139,7 +139,9 @@ mod store {
 
     fn save(map: &HashMap<String, String>) -> Result<(), SecretError> {
         let p = path()?;
-        let dir = p.parent().ok_or_else(|| SecretError::Backend("no parent dir".into()))?;
+        let dir = p
+            .parent()
+            .ok_or_else(|| SecretError::Backend("no parent dir".into()))?;
         std::fs::create_dir_all(dir).map_err(|e| SecretError::Backend(e.to_string()))?;
         let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
 
@@ -269,9 +271,8 @@ mod store {
 /// Authorization header, so caching it costs nothing the send itself does
 /// not already spend.
 fn cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
-    static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<String, String>>,
-    > = std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
+        std::sync::OnceLock::new();
     CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 

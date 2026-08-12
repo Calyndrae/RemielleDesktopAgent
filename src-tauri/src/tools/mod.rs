@@ -239,13 +239,7 @@ pub const CATALOG: &[ToolSpec] = &[
                           about 10%.",
             required: true,
             kind: ParamKind::Enum {
-                values: &[
-                    "play_pause",
-                    "next",
-                    "previous",
-                    "volume_up",
-                    "volume_down",
-                ],
+                values: &["play_pause", "next", "previous", "volume_up", "volume_down"],
             },
         }],
     },

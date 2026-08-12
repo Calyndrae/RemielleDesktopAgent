@@ -83,6 +83,8 @@ windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
   "Win32_Graphics_Gdi",
+  # SendInput, for the media/volume keys in tools/media.rs.
+  "Win32_UI_Input_KeyboardAndMouse",
 ] }
 # Windows Credential Manager, backed by DPAPI: the secret is bound to the
 # user's Windows account and cannot be read from another account or machine.
@@ -101,7 +103,15 @@ dirs = "6"
 # Tauri exposes. Already in the tree via tao; named here so the dependency is
 # honest rather than borrowed.
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSResponder", "NSApplication"] }
+objc2-app-kit = { version = "0.3", features = [
+  "NSWindow",
+  "NSResponder",
+  "NSApplication",
+  # NSEvent builds the system-defined media-key events in tools/media.rs.
+  "NSEvent",
+] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+objc2-core-graphics = { version = "0.3", features = ["libc"] }
 
 [features]
 # This feature is used for production builds where `devUrl` points to the

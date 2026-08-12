@@ -1,76 +1,173 @@
-//! Whatever is currently playing.
+//! Playback and volume.
 //!
-//! One domain, one module — the shape the catalog grows in from here. Every
-//! rule from `system.rs` still holds: the model picks an enum member, and the
-//! arm it selects holds a complete literal. Nothing it says is ever built into
-//! a command.
+//! The same rule as `system.rs`: every arm holds a complete, literal command or
+//! a fixed virtual-key constant. Nothing the model says is ever interpolated —
+//! `direction` is only ever compared against `"up"`, `"down"` and `"mute"`, and
+//! the thing that happens is chosen, never constructed.
 //!
-//! ## Why this talks to the OS and not to Spotify
-//!
-//! Both platforms already have a "whatever is playing" abstraction — media
-//! keys on Windows, the media remote on macOS — and every player worth having
-//! implements it. Targeting one app by name would mean an allowlist of players,
-//! a dependency on their APIs, and a tool that silently does nothing when the
-//! user is playing something else. The system route works with Spotify, Music,
-//! a browser tab, and a video call's ringtone alike.
-
-use serde::Serialize;
+//! Both platforms drive the *system* media keys rather than scripting a
+//! particular player. That is deliberate: it works with whatever the user has
+//! open — Spotify, a browser tab, Music — instead of pretending to know which
+//! app owns the sound, and it needs no per-app permission.
 
 use super::system::ToolOutcome;
 use super::ToolError;
 
-/// What the user asked for, once validated.
-///
-/// A separate type from the string on purpose: by the time anything platform-
-/// specific runs, the model's text has already been turned into one of five
-/// possibilities and cannot be anything else.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// What the media keys mean, once the enum has been validated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transport {
     PlayPause,
     Next,
     Previous,
-    VolumeUp,
-    VolumeDown,
 }
 
 impl Transport {
-    pub fn parse(action: &str) -> Result<Self, ToolError> {
-        Ok(match action {
-            "play_pause" => Self::PlayPause,
-            "next" => Self::Next,
-            "previous" => Self::Previous,
-            "volume_up" => Self::VolumeUp,
-            "volume_down" => Self::VolumeDown,
-            other => {
-                return Err(ToolError::NotAllowed {
-                    param: "action".into(),
-                    allowed: format!(
-                        "play_pause, next, previous, volume_up, volume_down (got {other:?})"
-                    ),
-                })
-            }
-        })
+    fn parse(action: &str) -> Result<Self, ToolError> {
+        match action {
+            "play_pause" => Ok(Self::PlayPause),
+            "next" => Ok(Self::Next),
+            "previous" => Ok(Self::Previous),
+            other => Err(ToolError::NotAllowed {
+                param: "action".into(),
+                allowed: format!("play_pause, next, previous (got {other:?})"),
+            }),
+        }
     }
 
-    /// How she describes having done it. Hers is the voice the user reads.
+    /// Her line in the transcript. Deliberately not "executed play_pause".
     fn summary(self) -> &'static str {
         match self {
-            Self::PlayPause => "帮你按了播放/暂停",
-            Self::Next => "跳到下一首了",
-            Self::Previous => "退回上一首了",
-            Self::VolumeUp => "音量调大了一点",
-            Self::VolumeDown => "音量调小了一点",
+            Self::PlayPause => "按了播放/暂停",
+            Self::Next => "跳到下一首",
+            Self::Previous => "回到上一首",
         }
     }
 
     fn result(self) -> &'static str {
         match self {
-            Self::PlayPause => "media_transport=play_pause",
-            Self::Next => "media_transport=next",
-            Self::Previous => "media_transport=previous",
-            Self::VolumeUp => "media_transport=volume_up",
-            Self::VolumeDown => "media_transport=volume_down",
+            Self::PlayPause => "media_key=play_pause sent",
+            Self::Next => "media_key=next sent",
+            Self::Previous => "media_key=previous sent",
         }
+    }
+}
+
+/// Volume steps, not absolute levels.
+///
+/// A percentage would mean taking a number from the model and putting it into
+/// a command. Steps keep the same promise the rest of the catalog makes: the
+/// model chooses between fixed outcomes and cannot express anything else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VolumeStep {
+    Up,
+    Down,
+    Mute,
+}
+
+impl VolumeStep {
+    fn parse(direction: &str) -> Result<Self, ToolError> {
+        match direction {
+            "up" => Ok(Self::Up),
+            "down" => Ok(Self::Down),
+            "mute" => Ok(Self::Mute),
+            other => Err(ToolError::NotAllowed {
+                param: "direction".into(),
+                allowed: format!("up, down, mute (got {other:?})"),
+            }),
+        }
+    }
+
+    fn summary(self) -> &'static str {
+        match self {
+            Self::Up => "把音量调高了一点",
+            Self::Down => "把音量调低了一点",
+            Self::Mute => "静音了（再叫一次就恢复）",
+        }
+    }
+
+    fn result(self) -> &'static str {
+        match self {
+            Self::Up => "volume=up",
+            Self::Down => "volume=down",
+            Self::Mute => "volume=mute_toggled",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// macOS
+// ---------------------------------------------------------------------------
+
+/// macOS has no "press the media key" shell command, so the key event is posted
+/// directly. `NSEvent` system-defined events with subtype 8 are what the
+/// keyboard itself sends; every media-aware app on the system already listens
+/// for them, which is why this works without naming a player.
+#[cfg(target_os = "macos")]
+mod imp {
+    use super::{Transport, VolumeStep};
+    use crate::tools::ToolError;
+
+    // NX_KEYTYPE_* constants from IOKit's ev_keymap.h.
+    const NX_KEYTYPE_SOUND_UP: u32 = 0;
+    const NX_KEYTYPE_SOUND_DOWN: u32 = 1;
+    const NX_KEYTYPE_MUTE: u32 = 7;
+    const NX_KEYTYPE_PLAY: u32 = 16;
+    const NX_KEYTYPE_NEXT: u32 = 17;
+    const NX_KEYTYPE_PREVIOUS: u32 = 18;
+
+    /// Posts one media key, down then up.
+    fn tap(key: u32) -> Result<(), ToolError> {
+        use objc2_app_kit::NSEvent;
+        use objc2_foundation::NSPoint;
+
+        // 14 = NSEventTypeSystemDefined, subtype 8 = NX_SUBTYPE_AUX_CONTROL_BUTTONS.
+        for down in [true, false] {
+            let state: i64 = if down { 0xA } else { 0xB };
+            let data1 = ((key as i64) << 16) | (state << 8);
+
+            // Exactly the shape AppKit documents for a system-defined event;
+            // every argument is a plain integer computed above.
+            let event =
+                NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2(
+                    objc2_app_kit::NSEventType(14),
+                    NSPoint::new(0.0, 0.0),
+                    objc2_app_kit::NSEventModifierFlags(0),
+                    0.0,
+                    0,
+                    None,
+                    8,
+                    data1 as isize,
+                    -1,
+                );
+
+            let Some(event) = event else {
+                return Err(ToolError::Failed("could not build the key event".into()));
+            };
+            let cg = event
+                .CGEvent()
+                .ok_or_else(|| ToolError::Failed("the key event had no CGEvent".into()))?;
+            objc2_core_graphics::CGEvent::post(
+                objc2_core_graphics::CGEventTapLocation::HIDEventTap,
+                Some(&cg),
+            );
+        }
+        Ok(())
+    }
+
+    pub fn transport(action: Transport) -> Result<(), ToolError> {
+        tap(match action {
+            Transport::PlayPause => NX_KEYTYPE_PLAY,
+            Transport::Next => NX_KEYTYPE_NEXT,
+            Transport::Previous => NX_KEYTYPE_PREVIOUS,
+        })
+    }
+
+    pub fn volume(step: VolumeStep) -> Result<(), ToolError> {
+        tap(match step {
+            VolumeStep::Up => NX_KEYTYPE_SOUND_UP,
+            VolumeStep::Down => NX_KEYTYPE_SOUND_DOWN,
+            VolumeStep::Mute => NX_KEYTYPE_MUTE,
+        })
     }
 }
 
@@ -78,116 +175,98 @@ impl Transport {
 // Windows
 // ---------------------------------------------------------------------------
 
-/// Synthesises the media key the user would have pressed.
-///
-/// `SendInput` with a virtual key code, not a command line — there is no string
-/// anywhere in this path. The key codes are the documented VK constants, chosen
-/// by the match arm rather than composed.
+/// Windows exposes the same keys as virtual-key codes, so this is a synthetic
+/// keypress through `SendInput` — the documented way to do it, and the same
+/// path a multimedia keyboard takes.
 #[cfg(target_os = "windows")]
-pub fn transport(action: Transport) -> Result<ToolOutcome, ToolError> {
+mod imp {
+    use super::{Transport, VolumeStep};
+    use crate::tools::ToolError;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VIRTUAL_KEY,
-        VK_MEDIA_NEXT_TRACK, VK_MEDIA_PLAY_PAUSE, VK_MEDIA_PREV_TRACK, VK_VOLUME_DOWN,
-        VK_VOLUME_UP,
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+        VIRTUAL_KEY, VK_MEDIA_NEXT_TRACK, VK_MEDIA_PLAY_PAUSE, VK_MEDIA_PREV_TRACK, VK_VOLUME_DOWN,
+        VK_VOLUME_MUTE, VK_VOLUME_UP,
     };
 
-    let key: VIRTUAL_KEY = match action {
-        Transport::PlayPause => VK_MEDIA_PLAY_PAUSE,
-        Transport::Next => VK_MEDIA_NEXT_TRACK,
-        Transport::Previous => VK_MEDIA_PREV_TRACK,
-        Transport::VolumeUp => VK_VOLUME_UP,
-        Transport::VolumeDown => VK_VOLUME_DOWN,
-    };
-
-    let press = INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: key,
-                ..Default::default()
+    fn tap(key: VIRTUAL_KEY) -> Result<(), ToolError> {
+        let press = |flags: KEYBD_EVENT_FLAGS| INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: key,
+                    wScan: 0,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
             },
-        },
-    };
-    let release = INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: key,
-                dwFlags: KEYEVENTF_KEYUP,
-                ..Default::default()
-            },
-        },
-    };
+        };
+        let events = [press(KEYBD_EVENT_FLAGS(0)), press(KEYEVENTF_KEYUP)];
 
-    // SAFETY: both INPUT values are fully initialised, live for the call, and
-    // the size argument matches the type exactly.
-    let sent = unsafe { SendInput(&[press, release], std::mem::size_of::<INPUT>() as i32) };
-    if sent != 2 {
-        return Err(ToolError::Failed(
-            "系统没有接受这次按键（可能被其他程序拦截了）".into(),
-        ));
+        // SAFETY: `events` is a live, correctly sized array of INPUT values and
+        // the size argument is `size_of::<INPUT>()`, exactly as SendInput
+        // requires. It only reads from the slice.
+        let sent = unsafe { SendInput(&events, std::mem::size_of::<INPUT>() as i32) };
+        if sent as usize == events.len() {
+            Ok(())
+        } else {
+            Err(ToolError::Failed("the key press was blocked".into()))
+        }
     }
 
+    pub fn transport(action: Transport) -> Result<(), ToolError> {
+        tap(match action {
+            Transport::PlayPause => VK_MEDIA_PLAY_PAUSE,
+            Transport::Next => VK_MEDIA_NEXT_TRACK,
+            Transport::Previous => VK_MEDIA_PREV_TRACK,
+        })
+    }
+
+    pub fn volume(step: VolumeStep) -> Result<(), ToolError> {
+        tap(match step {
+            VolumeStep::Up => VK_VOLUME_UP,
+            VolumeStep::Down => VK_VOLUME_DOWN,
+            VolumeStep::Mute => VK_VOLUME_MUTE,
+        })
+    }
+}
+
+/// Everywhere else the catalog already refuses these on platform grounds; this
+/// keeps the crate building on Linux CI.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+mod imp {
+    use super::{Transport, VolumeStep};
+    use crate::tools::ToolError;
+
+    pub fn transport(_action: Transport) -> Result<(), ToolError> {
+        Err(ToolError::WrongPlatform("media_control".into()))
+    }
+
+    pub fn volume(_step: VolumeStep) -> Result<(), ToolError> {
+        Err(ToolError::WrongPlatform("set_volume".into()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Entry points
+// ---------------------------------------------------------------------------
+
+pub fn media_control(action: &str) -> Result<ToolOutcome, ToolError> {
+    let action = Transport::parse(action)?;
+    imp::transport(action)?;
     Ok(ToolOutcome {
         result: action.result().into(),
         summary: action.summary().into(),
     })
 }
 
-// ---------------------------------------------------------------------------
-// macOS
-// ---------------------------------------------------------------------------
-
-/// Drives the system-wide media remote through System Events.
-///
-/// Each arm is a complete literal script. Volume goes through
-/// `set volume output volume` with a clamped arithmetic expression rather than
-/// a key code, because macOS's volume keys are not exposed to AppleScript —
-/// the clamp is what keeps repeated calls from walking past the ends.
-#[cfg(target_os = "macos")]
-pub fn transport(action: Transport) -> Result<ToolOutcome, ToolError> {
-    use std::process::Command;
-
-    const PLAY_PAUSE: &str = "tell application \"System Events\" to key code 16 using {}";
-    const NEXT: &str = "tell application \"System Events\" to key code 17 using {}";
-    const PREVIOUS: &str = "tell application \"System Events\" to key code 18 using {}";
-    const LOUDER: &str =
-        "set volume output volume (((output volume of (get volume settings)) + 10) min 100)";
-    const QUIETER: &str =
-        "set volume output volume (((output volume of (get volume settings)) - 10) max 0)";
-
-    let script = match action {
-        Transport::PlayPause => PLAY_PAUSE,
-        Transport::Next => NEXT,
-        Transport::Previous => PREVIOUS,
-        Transport::VolumeUp => LOUDER,
-        Transport::VolumeDown => QUIETER,
-    };
-
-    let output = Command::new("osascript")
-        .args(["-e", script])
-        .output()
-        .map_err(|e| ToolError::Failed(e.to_string()))?;
-
-    if !output.status.success() {
-        // The same permission wall `set_system_theme` hits, named the same way
-        // so the user learns one fix rather than two.
-        return Err(ToolError::Failed(
-            "控制不了播放，通常是「系统设置 → 隐私与安全性 → 自动化」里没给这个应用控制\
-             「系统事件」的权限"
-                .into(),
-        ));
-    }
-
+pub fn set_volume(direction: &str) -> Result<ToolOutcome, ToolError> {
+    let step = VolumeStep::parse(direction)?;
+    imp::volume(step)?;
     Ok(ToolOutcome {
-        result: action.result().into(),
-        summary: action.summary().into(),
+        result: step.result().into(),
+        summary: step.summary().into(),
     })
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
-pub fn transport(_action: Transport) -> Result<ToolOutcome, ToolError> {
-    Err(ToolError::WrongPlatform("media_control".into()))
 }
 
 #[cfg(test)]
@@ -195,52 +274,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_documented_action_parses() {
-        // The list here and the enum in the catalog spec must not drift; if a
-        // value is added to one and not the other, the model gets offered a
-        // choice that cannot execute.
-        for action in [
-            "play_pause",
-            "next",
-            "previous",
-            "volume_up",
-            "volume_down",
-        ] {
-            assert!(Transport::parse(action).is_ok(), "{action} should parse");
+    fn transport_accepts_exactly_the_catalog_values() {
+        for value in ["play_pause", "next", "previous"] {
+            assert!(Transport::parse(value).is_ok(), "{value} should parse");
         }
     }
 
     #[test]
-    fn anything_else_is_refused_by_name() {
-        let err = Transport::parse("rm -rf /").unwrap_err();
-        match err {
-            ToolError::NotAllowed { param, allowed } => {
-                assert_eq!(param, "action");
-                // The refusal names the real options rather than echoing the
-                // input as if it were nearly right.
-                assert!(allowed.contains("play_pause"));
-            }
-            other => panic!("expected NotAllowed, got {other:?}"),
+    fn volume_accepts_exactly_the_catalog_values() {
+        for value in ["up", "down", "mute"] {
+            assert!(VolumeStep::parse(value).is_ok(), "{value} should parse");
         }
     }
 
+    /// The validator should catch these first; this is the second wall. A
+    /// prose value must never fall through to a default action — silently
+    /// treating "pause the music please" as play_pause is how a tool starts
+    /// doing things nobody asked for.
     #[test]
-    fn summaries_are_in_her_voice_not_log_lines() {
-        // The summary is user-facing; a bare "ok" or an English status string
-        // here would read as the program talking, not her.
-        for action in [
-            Transport::PlayPause,
-            Transport::Next,
-            Transport::Previous,
-            Transport::VolumeUp,
-            Transport::VolumeDown,
+    fn anything_else_is_refused_rather_than_defaulted() {
+        for junk in [
+            "",
+            "PLAY_PAUSE",
+            "stop",
+            "pause the music please",
+            "up; rm -rf /",
         ] {
-            let summary = action.summary();
-            assert!(!summary.is_empty());
             assert!(
-                !summary.is_ascii(),
-                "summary should be written in her language, got {summary:?}"
+                Transport::parse(junk).is_err(),
+                "{junk:?} must not be accepted as a transport action"
             );
+            assert!(
+                VolumeStep::parse(junk).is_err(),
+                "{junk:?} must not be accepted as a volume step"
+            );
+        }
+    }
+
+    #[test]
+    fn every_outcome_speaks_plainly() {
+        // The summary is what the user reads in the transcript; it should never
+        // leak the enum value or the words "tool"/"executed".
+        for action in [Transport::PlayPause, Transport::Next, Transport::Previous] {
+            let summary = action.summary();
+            assert!(!summary.contains('_'), "{summary} looks like an identifier");
+        }
+        for step in [VolumeStep::Up, VolumeStep::Down, VolumeStep::Mute] {
+            let summary = step.summary();
+            assert!(!summary.contains('_'), "{summary} looks like an identifier");
         }
     }
 }

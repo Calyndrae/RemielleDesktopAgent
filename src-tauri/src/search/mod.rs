@@ -178,7 +178,12 @@ pub async fn search_news(query: &str) -> Result<Vec<Hit>, SearchError> {
     let recent = format!("{query} when:7d");
     let response = http
         .get("https://news.google.com/rss/search")
-        .query(&[("q", recent.as_str()), ("hl", hl), ("gl", gl), ("ceid", ceid)])
+        .query(&[
+            ("q", recent.as_str()),
+            ("hl", hl),
+            ("gl", gl),
+            ("ceid", ceid),
+        ])
         .send()
         .await
         .map_err(|e| SearchError::Network(e.to_string()))?;
@@ -254,11 +259,14 @@ pub fn parse_news_rss(xml: &str) -> Vec<Hit> {
             let url = clean(link);
             if url.starts_with("http") {
                 let date = field("pubDate").map(clean).unwrap_or_default();
-                hits.push((date_key(&date), Hit {
-                    title: clean(title),
-                    url,
-                    snippet: tidy_rss_date(&date),
-                }));
+                hits.push((
+                    date_key(&date),
+                    Hit {
+                        title: clean(title),
+                        url,
+                        snippet: tidy_rss_date(&date),
+                    },
+                ));
             }
         }
         if hits.len() >= MAX_HITS {
@@ -277,11 +285,23 @@ pub fn parse_news_rss(xml: &str) -> Vec<Hit> {
 /// Display-and-order only — no timezone math, no calendar arithmetic, so none
 /// of the bug-farm the `now_local` comment in tools/system.rs warns about.
 fn date_key(pub_date: &str) -> u32 {
-    let mut parts = pub_date.trim_start_matches(|c: char| !c.is_ascii_digit()).split_whitespace();
+    let mut parts = pub_date
+        .trim_start_matches(|c: char| !c.is_ascii_digit())
+        .split_whitespace();
     let day: u32 = parts.next().and_then(|d| d.parse().ok()).unwrap_or(0);
     let month = match parts.next().unwrap_or("") {
-        "Jan" => 1, "Feb" => 2, "Mar" => 3, "Apr" => 4, "May" => 5, "Jun" => 6,
-        "Jul" => 7, "Aug" => 8, "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12,
+        "Jan" => 1,
+        "Feb" => 2,
+        "Mar" => 3,
+        "Apr" => 4,
+        "May" => 5,
+        "Jun" => 6,
+        "Jul" => 7,
+        "Aug" => 8,
+        "Sep" => 9,
+        "Oct" => 10,
+        "Nov" => 11,
+        "Dec" => 12,
         _ => 0,
     };
     let year: u32 = parts.next().and_then(|y| y.parse().ok()).unwrap_or(0);
@@ -295,7 +315,12 @@ fn tidy_rss_date(pub_date: &str) -> String {
     if key == 0 {
         return pub_date.to_string();
     }
-    format!("{:04}-{:02}-{:02}", key / 10_000, key / 100 % 100, key % 100)
+    format!(
+        "{:04}-{:02}-{:02}",
+        key / 10_000,
+        key / 100 % 100,
+        key % 100
+    )
 }
 
 /// Save-time check for the optional Google credentials.

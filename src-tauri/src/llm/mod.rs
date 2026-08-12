@@ -1863,9 +1863,15 @@ async fn route_search(
     if decision.trim().is_empty() {
         // The reasoning-burn signature: a well-formed reply whose content is
         // empty because the token budget went to thinking.
-        log::warn!("router returned empty content: {}", &payload.chars().take(300).collect::<String>());
+        log::warn!(
+            "router returned empty content: {}",
+            &payload.chars().take(300).collect::<String>()
+        );
     } else {
-        log::info!("router decision: {}", decision.trim().chars().take(120).collect::<String>());
+        log::info!(
+            "router decision: {}",
+            decision.trim().chars().take(120).collect::<String>()
+        );
     }
 
     parse_route(&decision)
