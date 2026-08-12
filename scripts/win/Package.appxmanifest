@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest for Microsoft Store submission.
+
+  THREE VALUES MUST BE REPLACED with what Partner Center assigns after the app
+  name is reserved — Identity/@Name, Identity/@Publisher and
+  Properties/PublisherDisplayName. Partner Center shows them under
+  "Product identity". The placeholders below are only good for local testing
+  with a self-signed certificate.
+
+  Publisher display name deliberately differs from the product name: Tauri and
+  the Store both reject a package whose publisher and product read identically.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="Calyndrae.RemielleDesktopAgent"
+    Publisher="CN=Calyndrae"
+    Version="0.1.0.0" />
+
+  <Properties>
+    <DisplayName>Remielle Desktop Agent</DisplayName>
+    <PublisherDisplayName>Calyndrae</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>A desktop companion who lives on your screen, with her own voice.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+    <Resource Language="zh-cn" />
+  </Resources>
+
+  <Applications>
+    <Application Id="RemielleDesktopAgent" Executable="remielle-desktop-agent.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="蕾米埃尔 Remielle"
+        Description="A desktop companion who lives on your screen, with her own voice."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Square71x71Logo="Assets\Square71x71Logo.png" Square310x310Logo="Assets\Square310x310Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!--
+      runFullTrust is what a packaged Win32 app needs; it is the standard
+      capability for desktop apps in the Store and does not widen what she can
+      do beyond what the unpackaged build already does.
+      internetClient covers talking to the user's chosen LLM provider and the
+      keyless search backends.
+    -->
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+  </Capabilities>
+</Package>
