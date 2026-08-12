@@ -59,6 +59,27 @@ pub enum Risk {
     Confirm,
 }
 
+/// Which part of the machine a tool touches.
+///
+/// This lives with the spec rather than in the settings window because it is a
+/// fact about the tool, not a presentation choice — and because a UI that
+/// invents its own grouping drifts from the catalog the moment a tool is
+/// added. The settings list renders whatever groups it finds here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Group {
+    /// The machine itself: clock, appearance, security.
+    System,
+    /// Whatever is playing sound.
+    Media,
+    /// The window the user is looking at.
+    Window,
+    /// Other applications.
+    Apps,
+    /// Her own behaviour — the only group that acts on the companion herself.
+    Herself,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Platform {
@@ -113,6 +134,7 @@ pub struct ToolSpec {
     /// Written for the user, shown in settings and in confirmation prompts.
     pub user_label: &'static str,
     pub risk: Risk,
+    pub group: Group,
     pub platform: Platform,
     pub params: &'static [Param],
 }
@@ -125,6 +147,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       depends on when or where the user is.",
         user_label: "读取系统信息（时间、时区、系统语言）",
         risk: Risk::Read,
+        group: Group::System,
         platform: Platform::Any,
         params: &[],
     },
@@ -135,6 +158,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       are doing. Returns nothing if the user has disabled this.",
         user_label: "读取当前前台应用",
         risk: Risk::Read,
+        group: Group::System,
         platform: Platform::Desktop,
         params: &[],
     },
@@ -146,6 +170,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       appearance.",
         user_label: "切换系统明暗主题",
         risk: Risk::Act,
+        group: Group::System,
         platform: Platform::Desktop,
         params: &[Param {
             name: "mode",
@@ -164,6 +189,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       get out of the way, or to stay where they can see you.",
         user_label: "改变自己是否浮在全屏应用之上",
         risk: Risk::Act,
+        group: Group::Herself,
         platform: Platform::Any,
         params: &[
             Param {
@@ -193,6 +219,7 @@ pub const CATALOG: &[ToolSpec] = &[
         user_label: "运行 Windows Defender 病毒扫描",
         // Heavy on CPU and long-running: the user gets asked first, always.
         risk: Risk::Confirm,
+        group: Group::System,
         platform: Platform::Windows,
         params: &[Param {
             name: "scope",
@@ -210,6 +237,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       allowed. You cannot open anything not on that list.",
         user_label: "打开你许可过的应用",
         risk: Risk::Act,
+        group: Group::Apps,
         platform: Platform::Windows,
         params: &[Param {
             name: "app",
@@ -235,6 +263,7 @@ pub const CATALOG: &[ToolSpec] = &[
         // again, and a confirmation prompt for a media key would be the kind
         // of ceremony that teaches users to click through prompts.
         risk: Risk::Act,
+        group: Group::Media,
         platform: Platform::Desktop,
         params: &[Param {
             name: "action",
@@ -258,6 +287,7 @@ pub const CATALOG: &[ToolSpec] = &[
         // Act: every one of these is undone by dragging the window back, and
         // nothing here can lose the user's work.
         risk: Risk::Act,
+        group: Group::Window,
         platform: Platform::Desktop,
         params: &[Param {
             name: "action",

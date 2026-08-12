@@ -402,3 +402,25 @@ body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/*
+ * Tool groups.
+ *
+ * A heading between switch rows, not a boxed sub-panel: the group is a label
+ * for what follows, and drawing a second card inside a card makes the settings
+ * window look like a filing cabinet. The first group needs no top margin
+ * because the section's own note already sits above it.
+ */
+.toolgroup + .toolgroup {
+  margin-top: 22px;
+}
+
+.toolgroup__title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  /* Quieter than the section title above it, so the hierarchy reads at a
+     glance rather than competing. */
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}

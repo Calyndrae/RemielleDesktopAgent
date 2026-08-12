@@ -214,6 +214,8 @@ export interface ToolSpec {
   /** Written for the user. Always shown instead of `name`. */
   userLabel: string;
   risk: "read" | "act" | "confirm";
+  /** Which part of the machine this touches. Drives the settings grouping. */
+  group: "system" | "media" | "window" | "apps" | "herself";
   platform: "any" | "windows";
   params: { name: string; description: string; required: boolean }[];
 }

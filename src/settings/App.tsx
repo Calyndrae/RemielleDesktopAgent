@@ -38,6 +38,22 @@ import {
   useConfigStore,
 } from "@/state/config";
 
+/**
+ * Heading for each tool group, in the order they are shown.
+ *
+ * Ordered by how much of the machine the group touches, quietest first, so the
+ * list reads as widening scope rather than as an arbitrary pile. Anything the
+ * Rust catalog adds under an unknown group simply will not render, which is
+ * the safe direction to fail: a switch nobody can see grants nothing.
+ */
+const TOOL_GROUPS: ReadonlyArray<[ToolSpec["group"], string]> = [
+  ["herself", "她自己"],
+  ["system", "这台电脑"],
+  ["media", "正在放的东西"],
+  ["window", "你眼前的窗口"],
+  ["apps", "别的应用"],
+];
+
 type KeyState =
   | { status: "idle" }
   | { status: "verifying" }
@@ -770,24 +786,44 @@ export function SettingsApp() {
         {catalog.length === 0 ? (
           <p className="field__hint">这个系统上没有可用的工具。</p>
         ) : (
-          catalog.map((tool) => (
-            <div className="field" key={tool.name}>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={config.tools.includes(tool.name)}
-                  onChange={(event) => {
-                    const next = event.target.checked
-                      ? [...config.tools, tool.name]
-                      : config.tools.filter((name) => name !== tool.name);
-                    useConfigStore.getState().patch({ tools: next });
-                  }}
-                />
-                <span>{tool.userLabel}</span>
-                {tool.risk === "confirm" && <span className="tag">每次都会先问你</span>}
-              </label>
-            </div>
-          ))
+          /*
+            Grouped by what each tool touches, in a fixed order rather than
+            whatever the catalog happens to list first. A flat pile of switches
+            makes the user read every label to find the one they want; the
+            headings let them skip to "音乐" and stop reading.
+
+            The groups come from the Rust catalog, so a tool added there appears
+            here under the right heading without this file being edited.
+          */
+          TOOL_GROUPS.map(([group, heading]) => {
+            const inGroup = catalog.filter((tool) => tool.group === group);
+            if (inGroup.length === 0) return null;
+            return (
+              <div className="toolgroup" key={group}>
+                <h3 className="toolgroup__title">{heading}</h3>
+                {inGroup.map((tool) => (
+                  <div className="field" key={tool.name}>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={config.tools.includes(tool.name)}
+                        onChange={(event) => {
+                          const next = event.target.checked
+                            ? [...config.tools, tool.name]
+                            : config.tools.filter((name) => name !== tool.name);
+                          useConfigStore.getState().patch({ tools: next });
+                        }}
+                      />
+                      <span>{tool.userLabel}</span>
+                      {tool.risk === "confirm" && (
+                        <span className="tag">每次都会先问你</span>
+                      )}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            );
+          })
         )}
       </section>
 
