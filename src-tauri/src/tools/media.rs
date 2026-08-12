@@ -8,7 +8,16 @@
 //! Both platforms drive the *system* media keys rather than scripting a
 //! particular player. That is deliberate: it works with whatever the user has
 //! open — Spotify, a browser tab, Music — instead of pretending to know which
-//! app owns the sound, and it needs no per-app permission.
+//! app owns the sound.
+//!
+//! ## The macOS permission, and why it is checked rather than assumed
+//!
+//! Synthesising input on macOS requires Accessibility permission, and
+//! `CGEventPost` does not report its absence — the event is silently dropped.
+//! A tool that runs, reports success and does nothing is worse than one that
+//! fails, so the macOS path checks `AXIsProcessTrusted` first and, when the
+//! answer is no, opens the Accessibility pane and says so in her own voice.
+//! Windows needs no equivalent: `SendInput` works for any interactive process.
 
 use super::system::ToolOutcome;
 use super::ToolError;
@@ -102,8 +111,45 @@ mod imp {
     const NX_KEYTYPE_NEXT: u32 = 17;
     const NX_KEYTYPE_PREVIOUS: u32 = 18;
 
+    // Declared rather than pulled in as a dependency: one symbol from
+    // ApplicationServices, which is already linked into every Cocoa app.
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXIsProcessTrusted() -> bool;
+    }
+
+    /// Whether macOS will let this process synthesise input at all.
+    ///
+    /// This check exists because the failure it catches is invisible.
+    /// `CGEventPost` returns nothing — no error, no status — and when
+    /// Accessibility permission is missing the event is simply dropped. Without
+    /// this, asking her to skip a track would look exactly like a tool that ran
+    /// fine and did nothing, which is the worst possible shape for a bug: the
+    /// user blames the app, the model reports success, and nothing in any log
+    /// says why.
+    fn permitted() -> bool {
+        // SAFETY: a no-argument C predicate from a framework linked into the
+        // process; it reads TCC state and returns a bool.
+        unsafe { AXIsProcessTrusted() }
+    }
+
     /// Posts one media key, down then up.
     fn tap(key: u32) -> Result<(), ToolError> {
+        if !permitted() {
+            // Open the exact pane rather than describing where it is. The user
+            // asked for this a second ago; making them navigate four levels of
+            // System Settings from a sentence is how a feature gets abandoned.
+            let _ = std::process::Command::new("open")
+                .arg(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                )
+                .status();
+            return Err(ToolError::Failed(
+                "macOS 不让我按媒体键。我已经把「辅助功能」那一页打开了 —— \
+                 在列表里勾上蕾米埃尔，再叫我一次就行。"
+                    .into(),
+            ));
+        }
         use objc2_app_kit::NSEvent;
         use objc2_foundation::NSPoint;
 
