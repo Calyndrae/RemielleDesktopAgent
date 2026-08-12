@@ -13,23 +13,46 @@
 use super::system::ToolOutcome;
 use super::ToolError;
 
-/// What the media keys mean, once the enum has been validated.
+/// One action, mirroring the catalog's `action` enum exactly.
+///
+/// Transport and volume live in the same enum because they are the same tool
+/// from the user's side ("do something to the music") and the same mechanism
+/// underneath (one media key). Splitting them produced the bug this replaced:
+/// a catalog offering `volume_up` and an executor that only understood
+/// transport, so the model could name an action that could never run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Transport {
+pub enum Action {
     PlayPause,
     Next,
     Previous,
+    VolumeUp,
+    VolumeDown,
+    Mute,
 }
 
-impl Transport {
+/// The catalog's allowed values, in one place so the spec and the parser are
+/// written from the same list.
+pub const ACTIONS: &[&str] = &[
+    "play_pause",
+    "next",
+    "previous",
+    "volume_up",
+    "volume_down",
+    "mute",
+];
+
+impl Action {
     fn parse(action: &str) -> Result<Self, ToolError> {
         match action {
             "play_pause" => Ok(Self::PlayPause),
             "next" => Ok(Self::Next),
             "previous" => Ok(Self::Previous),
+            "volume_up" => Ok(Self::VolumeUp),
+            "volume_down" => Ok(Self::VolumeDown),
+            "mute" => Ok(Self::Mute),
             other => Err(ToolError::NotAllowed {
                 param: "action".into(),
-                allowed: format!("play_pause, next, previous (got {other:?})"),
+                allowed: format!("{} (got {other:?})", ACTIONS.join(", ")),
             }),
         }
     }
@@ -40,6 +63,9 @@ impl Transport {
             Self::PlayPause => "按了播放/暂停",
             Self::Next => "跳到下一首",
             Self::Previous => "回到上一首",
+            Self::VolumeUp => "把音量调高了一点",
+            Self::VolumeDown => "把音量调低了一点",
+            Self::Mute => "静音了（再叫一次就恢复）",
         }
     }
 
@@ -48,48 +74,9 @@ impl Transport {
             Self::PlayPause => "media_key=play_pause sent",
             Self::Next => "media_key=next sent",
             Self::Previous => "media_key=previous sent",
-        }
-    }
-}
-
-/// Volume steps, not absolute levels.
-///
-/// A percentage would mean taking a number from the model and putting it into
-/// a command. Steps keep the same promise the rest of the catalog makes: the
-/// model chooses between fixed outcomes and cannot express anything else.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VolumeStep {
-    Up,
-    Down,
-    Mute,
-}
-
-impl VolumeStep {
-    fn parse(direction: &str) -> Result<Self, ToolError> {
-        match direction {
-            "up" => Ok(Self::Up),
-            "down" => Ok(Self::Down),
-            "mute" => Ok(Self::Mute),
-            other => Err(ToolError::NotAllowed {
-                param: "direction".into(),
-                allowed: format!("up, down, mute (got {other:?})"),
-            }),
-        }
-    }
-
-    fn summary(self) -> &'static str {
-        match self {
-            Self::Up => "把音量调高了一点",
-            Self::Down => "把音量调低了一点",
-            Self::Mute => "静音了（再叫一次就恢复）",
-        }
-    }
-
-    fn result(self) -> &'static str {
-        match self {
-            Self::Up => "volume=up",
-            Self::Down => "volume=down",
-            Self::Mute => "volume=mute_toggled",
+            Self::VolumeUp => "media_key=volume_up sent",
+            Self::VolumeDown => "media_key=volume_down sent",
+            Self::Mute => "media_key=mute sent",
         }
     }
 }
@@ -104,7 +91,7 @@ impl VolumeStep {
 /// for them, which is why this works without naming a player.
 #[cfg(target_os = "macos")]
 mod imp {
-    use super::{Transport, VolumeStep};
+    use super::Action;
     use crate::tools::ToolError;
 
     // NX_KEYTYPE_* constants from IOKit's ev_keymap.h.
@@ -154,19 +141,14 @@ mod imp {
         Ok(())
     }
 
-    pub fn transport(action: Transport) -> Result<(), ToolError> {
+    pub fn press(action: Action) -> Result<(), ToolError> {
         tap(match action {
-            Transport::PlayPause => NX_KEYTYPE_PLAY,
-            Transport::Next => NX_KEYTYPE_NEXT,
-            Transport::Previous => NX_KEYTYPE_PREVIOUS,
-        })
-    }
-
-    pub fn volume(step: VolumeStep) -> Result<(), ToolError> {
-        tap(match step {
-            VolumeStep::Up => NX_KEYTYPE_SOUND_UP,
-            VolumeStep::Down => NX_KEYTYPE_SOUND_DOWN,
-            VolumeStep::Mute => NX_KEYTYPE_MUTE,
+            Action::PlayPause => NX_KEYTYPE_PLAY,
+            Action::Next => NX_KEYTYPE_NEXT,
+            Action::Previous => NX_KEYTYPE_PREVIOUS,
+            Action::VolumeUp => NX_KEYTYPE_SOUND_UP,
+            Action::VolumeDown => NX_KEYTYPE_SOUND_DOWN,
+            Action::Mute => NX_KEYTYPE_MUTE,
         })
     }
 }
@@ -180,7 +162,7 @@ mod imp {
 /// path a multimedia keyboard takes.
 #[cfg(target_os = "windows")]
 mod imp {
-    use super::{Transport, VolumeStep};
+    use super::Action;
     use crate::tools::ToolError;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
@@ -214,19 +196,14 @@ mod imp {
         }
     }
 
-    pub fn transport(action: Transport) -> Result<(), ToolError> {
+    pub fn press(action: Action) -> Result<(), ToolError> {
         tap(match action {
-            Transport::PlayPause => VK_MEDIA_PLAY_PAUSE,
-            Transport::Next => VK_MEDIA_NEXT_TRACK,
-            Transport::Previous => VK_MEDIA_PREV_TRACK,
-        })
-    }
-
-    pub fn volume(step: VolumeStep) -> Result<(), ToolError> {
-        tap(match step {
-            VolumeStep::Up => VK_VOLUME_UP,
-            VolumeStep::Down => VK_VOLUME_DOWN,
-            VolumeStep::Mute => VK_VOLUME_MUTE,
+            Action::PlayPause => VK_MEDIA_PLAY_PAUSE,
+            Action::Next => VK_MEDIA_NEXT_TRACK,
+            Action::Previous => VK_MEDIA_PREV_TRACK,
+            Action::VolumeUp => VK_VOLUME_UP,
+            Action::VolumeDown => VK_VOLUME_DOWN,
+            Action::Mute => VK_VOLUME_MUTE,
         })
     }
 }
@@ -235,15 +212,11 @@ mod imp {
 /// keeps the crate building on Linux CI.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod imp {
-    use super::{Transport, VolumeStep};
+    use super::Action;
     use crate::tools::ToolError;
 
-    pub fn transport(_action: Transport) -> Result<(), ToolError> {
+    pub fn press(_action: Action) -> Result<(), ToolError> {
         Err(ToolError::WrongPlatform("media_control".into()))
-    }
-
-    pub fn volume(_step: VolumeStep) -> Result<(), ToolError> {
-        Err(ToolError::WrongPlatform("set_volume".into()))
     }
 }
 
@@ -252,20 +225,11 @@ mod imp {
 // ---------------------------------------------------------------------------
 
 pub fn media_control(action: &str) -> Result<ToolOutcome, ToolError> {
-    let action = Transport::parse(action)?;
-    imp::transport(action)?;
+    let action = Action::parse(action)?;
+    imp::press(action)?;
     Ok(ToolOutcome {
         result: action.result().into(),
         summary: action.summary().into(),
-    })
-}
-
-pub fn set_volume(direction: &str) -> Result<ToolOutcome, ToolError> {
-    let step = VolumeStep::parse(direction)?;
-    imp::volume(step)?;
-    Ok(ToolOutcome {
-        result: step.result().into(),
-        summary: step.summary().into(),
     })
 }
 
@@ -274,21 +238,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transport_accepts_exactly_the_catalog_values() {
-        for value in ["play_pause", "next", "previous"] {
-            assert!(Transport::parse(value).is_ok(), "{value} should parse");
+    fn parses_exactly_the_catalog_values() {
+        for value in ACTIONS {
+            assert!(Action::parse(value).is_ok(), "{value} should parse");
         }
     }
 
+    /// The bug this guards against actually shipped for one commit: the
+    /// catalog offered `volume_up` while the executor understood only
+    /// transport, so a legal call died at the second wall. The spec now reads
+    /// its values from `ACTIONS`, and this proves the two agree.
     #[test]
-    fn volume_accepts_exactly_the_catalog_values() {
-        for value in ["up", "down", "mute"] {
-            assert!(VolumeStep::parse(value).is_ok(), "{value} should parse");
+    fn the_catalog_spec_and_the_parser_share_one_list() {
+        let spec = crate::tools::find("media_control").expect("media_control is in the catalog");
+        let param = spec
+            .params
+            .iter()
+            .find(|p| p.name == "action")
+            .expect("has action");
+        match &param.kind {
+            crate::tools::ParamKind::Enum { values } => {
+                assert_eq!(
+                    *values, ACTIONS,
+                    "catalog and parser must offer the same actions"
+                );
+            }
+            other => panic!("action should be an enum, got {other:?}"),
         }
     }
 
-    /// The validator should catch these first; this is the second wall. A
-    /// prose value must never fall through to a default action — silently
+    /// A prose value must never fall through to a default action — silently
     /// treating "pause the music please" as play_pause is how a tool starts
     /// doing things nobody asked for.
     #[test]
@@ -301,12 +280,8 @@ mod tests {
             "up; rm -rf /",
         ] {
             assert!(
-                Transport::parse(junk).is_err(),
-                "{junk:?} must not be accepted as a transport action"
-            );
-            assert!(
-                VolumeStep::parse(junk).is_err(),
-                "{junk:?} must not be accepted as a volume step"
+                Action::parse(junk).is_err(),
+                "{junk:?} must not be accepted as an action"
             );
         }
     }
@@ -315,12 +290,8 @@ mod tests {
     fn every_outcome_speaks_plainly() {
         // The summary is what the user reads in the transcript; it should never
         // leak the enum value or the words "tool"/"executed".
-        for action in [Transport::PlayPause, Transport::Next, Transport::Previous] {
-            let summary = action.summary();
-            assert!(!summary.contains('_'), "{summary} looks like an identifier");
-        }
-        for step in [VolumeStep::Up, VolumeStep::Down, VolumeStep::Mute] {
-            let summary = step.summary();
+        for value in ACTIONS {
+            let summary = Action::parse(value).unwrap().summary();
             assert!(!summary.contains('_'), "{summary} looks like an identifier");
         }
     }

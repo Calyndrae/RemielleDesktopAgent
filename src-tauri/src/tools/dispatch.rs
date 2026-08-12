@@ -136,7 +136,6 @@ pub fn dispatch(call: &ToolCall, enabled: &[String], allowlist: &[String]) -> Di
         "set_system_theme" => system::set_system_theme(text("mode")),
         "security_scan" => system::security_scan(text("scope")),
         "media_control" => media::media_control(text("action")),
-        "set_volume" => media::set_volume(text("direction")),
         // Both are handled by the app rather than a system call: they change
         // this window, or launch from the user's own allowlist.
         "set_stay_on_top" => Ok(ToolOutcome {

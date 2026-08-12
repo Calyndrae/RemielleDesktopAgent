@@ -226,7 +226,9 @@ pub const CATALOG: &[ToolSpec] = &[
         description: "Control whatever media is currently playing on the \
                       computer — any player that responds to the system media \
                       keys, including Spotify, Apple Music and browser tabs. \
-                      Use when the user asks to pause, skip, or change volume.",
+                      Use when the user asks to pause, skip, or change volume. \
+                      Volume moves one step at a time; there is no way to set \
+                      an exact level.",
         user_label: "控制正在播放的音乐（播放/暂停、切歌、音量）",
         // Act, not Confirm: pressing pause is as reversible as pressing it
         // again, and a confirmation prompt for a media key would be the kind
@@ -238,8 +240,10 @@ pub const CATALOG: &[ToolSpec] = &[
             description: "Which transport control to press. Volume steps by \
                           about 10%.",
             required: true,
+            // The one list, shared with the executor's parser — see the test
+            // in media.rs that holds them together.
             kind: ParamKind::Enum {
-                values: &["play_pause", "next", "previous", "volume_up", "volume_down"],
+                values: media::ACTIONS,
             },
         }],
     },
