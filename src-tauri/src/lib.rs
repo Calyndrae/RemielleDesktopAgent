@@ -3,7 +3,7 @@ mod llm;
 mod platform;
 mod search;
 mod secrets;
-mod tools;
+pub mod tools;
 mod window;
 
 use tauri::{AppHandle, Manager, Runtime};
