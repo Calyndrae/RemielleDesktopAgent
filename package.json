@@ -1,7 +1,7 @@
 {
   "name": "remielle-desktop-agent",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "description": "A desktop companion agent featuring Remielle Dan — floating mascot with an LLM chat panel.",

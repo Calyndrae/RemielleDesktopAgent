@@ -530,3 +530,42 @@ plumbing. The commits tell the story; the short version:
 
 Watch the disk: the VM's qcow2 is ~29GB and src-tauri/target regrows to ~6GB
 per full build. The two do not fit comfortably at the same time on this Mac.
+
+## 11. media_control + arrange_window verified on Windows (2026-08-13)
+
+The tooltest example ran in the VM's interactive session against a real
+Notepad window. All eight actions passed, with geometry proven, not assumed:
+
+- `snap_right`: sampled `GetWindowRect` = 570→1140 on a 1140-wide work area —
+  the exact right half. This validates the shared `work_area` split arithmetic
+  that `snap_left` also uses.
+- `maximize`: rect −7,−7→1148,675 — the canonical maximize border-overhang.
+- `minimize`: `IsIconic` returned True AND the −32000-style minimized rect
+  (scaled to −21333 by the VM's 150% DPI) appeared in samples.
+- All four media keys (`volume_up/down`, `play_pause`×2) injected OK via
+  `SendInput` in the interactive session.
+
+Three build failures on the way, each a lesson:
+
+1. **The guest's offline cargo cache goes stale when Cargo.toml grows.** New
+   deps (objc2-core-graphics → objc2-metal) exist in the lockfile but not in
+   the VM's registry index → "no matching package" even though the crates are
+   macOS-only. Fix: tar the Mac's `registry/index/.cache` + the new `.crate`
+   files, extract over the guest's cargo registry (see `cargo-delta` pattern).
+2. **The guest C: is 39GB with CompactOS compression ON.** Logical sizes lie:
+   `Get-ChildItem` sums exceed the volume. Deleting "5.3GB" of Windows Update
+   cache (`rd /s /q C:\Windows\SoftwareDistribution\Download` after stopping
+   wuauserv/bits) freed under 1GB physical. Plan disk moves in physical terms
+   (`(Get-PSDrive C).Free`) and expect Windows itself to eat ~33GB logical.
+3. **Embedded double quotes NEVER survive the UTM `execute` → cmd argv
+   rebuild** (they arrive backslash-escaped, which cmd cannot parse). Anything
+   needing quotes — schtasks /tr, powershell -Command with strings — must be
+   authored as a file on the Mac, curl'd into the guest, and run by bare path.
+   When output capture flakes (the wedge precursor), read files back as
+   base64: `[Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\x'))`,
+   then decode GBK on the Mac (`iconv -f GBK -t UTF-8` — zh-CN console).
+
+v0.1.1 prepared: version bumped in tauri.conf.json / Cargo.toml /
+package.json. Release scope: media_control + arrange_window + settings tool
+grouping, markdown/KaTeX renderer with favicon citation chips, keys.json
+storage (Keychain removed), router/greeting token fixes.
