@@ -1,4 +1,4 @@
-# Remielle Desktop Agent v0.1.1
+# Remielle Desktop Agent v0.1.2
 
 蕾米埃尔·丹 — a desktop companion that lives on your screen, not in a browser tab.
 
@@ -6,9 +6,9 @@
 
 | Your computer | Download this | Then |
 |---|---|---|
-| **Windows — almost everyone** (Intel or AMD) | `Remielle Desktop Agent_0.1.1_x64-setup.exe` | Double-click it |
-| **Windows on ARM** — only Snapdragon / Surface Pro X | `Remielle Desktop Agent_0.1.1_arm64-setup.exe` | Double-click it |
-| **Mac** (Apple Silicon — M1 and newer) | `Remielle Desktop Agent_0.1.1_aarch64.dmg` | Double-click it |
+| **Windows — almost everyone** (Intel or AMD) | `Remielle Desktop Agent_0.1.2_x64-setup.exe` | Double-click it |
+| **Windows on ARM** — only Snapdragon / Surface Pro X | `Remielle Desktop Agent_0.1.2_arm64-setup.exe` | Double-click it |
+| **Mac** (Apple Silicon — M1 and newer) | `Remielle Desktop Agent_0.1.2_aarch64.dmg` | Double-click it |
 
 No commands to type, nothing to unzip. **If you are unsure on Windows, take the
 x64 one** — that is nearly every PC. To be certain: Settings → System → About →
@@ -51,6 +51,20 @@ Task Manager lists `remielle-desktop-agent.exe` at about 40 MB.
 Then open 设置 (Settings) and add an API key for your provider (DeepSeek, OpenAI,
 Groq, Ollama, or any OpenAI-compatible endpoint). The key is stored per-user on
 your machine — never sent anywhere except to the provider you chose.
+
+## What's new in 0.1.2
+
+- **"Always on top" now really stays on top of fullscreen apps on Windows.**
+  Ticking it always did set the flag — the catch is that Windows keeps every
+  topmost window in one band, and whichever was activated last leads it. A video
+  or game going fullscreen marks itself topmost too, so it took the lead and she
+  slipped behind, with nothing reporting an error. She now restates her position
+  twice a second while the setting is on, and does it without stealing focus
+  from whatever you are watching.
+
+  *One limit worth knowing:* a game in true **exclusive** fullscreen bypasses the
+  desktop compositor entirely, and no application can draw over that. If she
+  vanishes over a game, switching it to borderless-windowed mode brings her back.
 
 ## What's new in 0.1.1
 

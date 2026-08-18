@@ -1,3 +1,3 @@
-e5b219bd5e3cfaa114ad16c388cf2ad2ccffaf1717b03a06e88ca0c29b61cb45  Remielle Desktop Agent_0.1.1_aarch64.dmg
-698cbbeccd38fde17180bb0dd42409954a5ec223dee3af0603c491401e1858d4  Remielle Desktop Agent_0.1.1_x64-setup.exe
-d7a82f17a29167b5d9684d0bcedf2078ba102944e8a2a5aea2e6ddbf03e59c04  Remielle Desktop Agent_0.1.1_arm64-setup.exe
+48ded8073da79ca51b8a30abd968155613184ee1720eb1e29c0513a204ae2079  Remielle Desktop Agent_0.1.2_aarch64.dmg
+fde0d827f94243ce22d17d2cb54c005b292fa4d5fc02f977baf4b4d97dfe3efd  Remielle Desktop Agent_0.1.2_x64-setup.exe
+5c9dd27deccda07224de30426b0368f04f25f276ee41271bf56dc8a2163b5c0e  Remielle Desktop Agent_0.1.2_arm64-setup.exe
