@@ -1,6 +1,6 @@
 [package]
 name = "remielle-desktop-agent"
-version = "0.1.1"
+version = "0.1.2"
 description = "Remielle desktop companion agent"
 authors = ["Calyndrae"]
 edition = "2021"
