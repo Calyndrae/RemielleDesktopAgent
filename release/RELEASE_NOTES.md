@@ -6,12 +6,16 @@
 
 | Your computer | Download this | Then |
 |---|---|---|
-| **Windows** (most PCs — Intel or AMD) | `Remielle Desktop Agent_0.1.1_x64-setup.exe` | Double-click it |
-| **Windows on ARM** (Surface Pro X / Snapdragon) | `Remielle Desktop Agent_0.1.1_arm64-setup.exe` | Double-click it |
+| **Windows — almost everyone** (Intel or AMD) | `Remielle Desktop Agent_0.1.1_x64-setup.exe` | Double-click it |
+| **Windows on ARM** — only Snapdragon / Surface Pro X | `Remielle Desktop Agent_0.1.1_arm64-setup.exe` | Double-click it |
 | **Mac** (Apple Silicon — M1 and newer) | `Remielle Desktop Agent_0.1.1_aarch64.dmg` | Double-click it |
 
-No commands to type, nothing to unzip. Not sure which Windows one? Pick **x64** —
-that is nearly every PC.
+No commands to type, nothing to unzip. **If you are unsure on Windows, take the
+x64 one** — that is nearly every PC. To be certain: Settings → System → About →
+*System type*; it says either "x64-based processor" or "ARM-based processor".
+
+Picking the ARM one on a normal PC installs fine and then never opens, because
+an Intel/AMD machine cannot run ARM programs at all.
 
 ## First run
 
@@ -25,6 +29,11 @@ see *Known limitations*). Clicking through the warning is a one-time thing.
 2. Blue "Windows protected your PC" box → click **More info** → **Run anyway**.
 3. The installer runs. No admin password needed — she installs just for you.
 4. She's in the Start Menu as **Remielle Desktop Agent**.
+
+She has **no window and no taskbar button** — that is deliberate. What you get
+is her sprite floating on the desktop, and a **tray icon** near the clock (which
+Windows often hides behind the `^` arrow). If you want proof she is running,
+Task Manager lists `remielle-desktop-agent.exe` at about 40 MB.
 
 **macOS**
 
