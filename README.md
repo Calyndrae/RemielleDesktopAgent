@@ -118,8 +118,12 @@ See [`program/macos/README.md`](program/macos/README.md) and
 details, including the caveats of the icon step and how to get a Windows
 installer without a Windows machine.
 
-Neither platform is code-signed. macOS needs a right-click → Open or
-`xattr -dr com.apple.quarantine`; Windows shows a SmartScreen warning.
+Neither platform is code-signed, so a downloaded build warns once. On current
+macOS the right-click → Open trick no longer works: it is System Settings →
+Privacy & Security → **Open Anyway** (or `xattr -dr com.apple.quarantine` from
+a terminal). Windows shows a SmartScreen warning — *More info* → *Run anyway*.
+Released downloads are shaped so neither platform needs a command: Windows
+ships an NSIS installer, macOS a drag-to-Applications `.dmg`.
 
 ### Linux
 

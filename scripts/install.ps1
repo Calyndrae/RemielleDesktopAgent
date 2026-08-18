@@ -17,14 +17,20 @@ Write-Host "  architecture: $arch"
 
 $release = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" `
     -Headers @{ 'User-Agent' = 'remielle-installer' }
-$asset = $release.assets | Where-Object { $_.name -like "*_$arch.exe" } | Select-Object -First 1
+# Prefer the installer; fall back to a portable build for releases that shipped
+# one. Both are per-user, so neither path ever asks for admin rights.
+$asset = $release.assets | Where-Object { $_.name -like "*_$arch-setup.exe" } | Select-Object -First 1
+$isSetup = [bool]$asset
+if (-not $asset) {
+    $asset = $release.assets | Where-Object { $_.name -like "*_$arch.exe" } | Select-Object -First 1
+}
 if (-not $asset) { throw "No $arch build in release $($release.tag_name)." }
 
 Write-Host "  version:      $($release.tag_name)"
 Write-Host "  downloading   $($asset.name) ($([math]::Round($asset.size/1MB,1)) MB)"
 
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
-$exe = Join-Path $dest 'Remielle Desktop Agent.exe'
+$exe = if ($isSetup) { Join-Path $env:TEMP $asset.name } else { Join-Path $dest 'Remielle Desktop Agent.exe' }
 Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $exe -UseBasicParsing
 
 # Checksums are published with every release; verifying here means a corrupted
@@ -32,8 +38,9 @@ Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $exe -UseBasicParsin
 $sums = $release.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' } | Select-Object -First 1
 if ($sums) {
     # One line per artifact; the architecture suffix identifies ours uniquely.
+    $suffix = if ($isSetup) { "_$arch-setup\.exe" } else { "_$arch\.exe" }
     $line = (Invoke-WebRequest $sums.browser_download_url -UseBasicParsing).Content -split "`n" |
-        Where-Object { $_ -match "_$arch\.exe\s*$" } | Select-Object -First 1
+        Where-Object { $_ -match "$suffix\s*$" } | Select-Object -First 1
     if ($line) {
         $expected = ($line -split '\s+')[0].ToLower()
         $actual = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
@@ -48,6 +55,16 @@ if ($sums) {
 # Clears the mark-of-the-web, so Windows does not treat a file this script just
 # verified as an unknown download every time it launches.
 Unblock-File $exe
+
+# The installer already writes the Start Menu entry and launches her, so the
+# script's own shortcut work below belongs only to the portable path.
+if ($isSetup) {
+    Write-Host ""
+    Write-Host "  running installer…"
+    Start-Process -FilePath $exe -Wait
+    Write-Host "  installed     see the Start Menu for Remielle"
+    return
+}
 
 $startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $startMenu 'Remielle.lnk'))
