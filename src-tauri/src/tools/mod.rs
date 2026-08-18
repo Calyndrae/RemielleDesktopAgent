@@ -681,6 +681,7 @@ mod tests {
             user_label: "",
             risk: Risk::Act,
             platform: Platform::Any,
+            group: Group::System,
             params: &[Param {
                 name: "level",
                 description: "",

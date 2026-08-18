@@ -276,7 +276,7 @@ pub fn parse_news_rss(xml: &str) -> Vec<Hit> {
     }
     // Newest first. The feed's own order mixes relevance in, and "recent news"
     // answered from position one must actually be the most recent.
-    hits.sort_by(|a, b| b.0.cmp(&a.0));
+    hits.sort_by_key(|(date, _)| std::cmp::Reverse(*date));
     hits.into_iter().map(|(_, hit)| hit).collect()
 }
 

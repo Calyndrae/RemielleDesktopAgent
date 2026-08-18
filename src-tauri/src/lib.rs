@@ -92,6 +92,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_os::init())
         .manage(PassthroughState::default())
+        .manage(window::overlay::StayOnTop::default())
         .manage(window::tray::TrayState::<tauri::Wry>::default())
         .manage(llm::StreamRegistry::default())
         .manage(llm::ConfirmRegistry::default())

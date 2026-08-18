@@ -1,7 +1,24 @@
 //! Placement and sizing of the overlay window.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use serde::Serialize;
-use tauri::{PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
+use tauri::{Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
+
+/// Whether the user asked her to stay above everything.
+///
+/// Recorded because holding that position on Windows takes repetition, not a
+/// single call (see `platform::keep_above_fullscreen`), and the poller doing
+/// the repeating has no other way to know whether it was ever asked for.
+/// Defaults to false, matching the window's own initial state.
+#[derive(Default)]
+pub struct StayOnTop(AtomicBool);
+
+impl StayOnTop {
+    pub fn wanted(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+}
 
 /// Geometry the frontend needs to translate between its own logical pixel space
 /// and the desktop.
@@ -189,6 +206,7 @@ pub fn set_overlay_on_top<R: Runtime>(window: WebviewWindow<R>, on: bool) -> Res
     #[cfg(not(target_os = "macos"))]
     window.set_always_on_top(on).map_err(|e| e.to_string())?;
     crate::platform::set_above_fullscreen(&window, on);
+    window.state::<StayOnTop>().0.store(on, Ordering::Relaxed);
     Ok(())
 }
 

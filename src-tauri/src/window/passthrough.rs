@@ -55,6 +55,14 @@ const HIT_PADDING: f64 = 8.0;
 /// slow enough that the window-system query is free in aggregate.
 const STRANDING_CHECK_EVERY: u32 = 125;
 
+/// Poll ticks between restatements of "stay on top".
+///
+/// 32 ticks at 16 ms is about half a second. The thing being corrected is
+/// another window taking the top of the topmost band, which happens when a user
+/// puts something fullscreen — so the deadline is human, not mechanical, and
+/// the correction only has to beat the moment they look for her.
+const TOPMOST_REASSERT_EVERY: u32 = 32;
+
 /// A rectangle in logical (CSS) pixels, relative to the overlay's client area.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -200,6 +208,25 @@ pub fn spawn_poller<R: Runtime>(app: AppHandle<R>) {
              * already happened by the time she is shown again.
              */
             ticks = ticks.wrapping_add(1);
+
+            /*
+             * Is she still on top?
+             *
+             * Only meaningful where the position can be taken back — Windows,
+             * where a fullscreen app that marks itself topmost outranks her the
+             * moment it is activated. Re-stating it costs one syscall and is
+             * skipped entirely unless the user asked for stay-on-top.
+             *
+             * Twice a second, not every tick: the window that steals the spot
+             * arrives on human timescales, and half a second is short enough
+             * that she reappears as part of the same glance.
+             */
+            if ticks % TOPMOST_REASSERT_EVERY == 0
+                && app.state::<overlay::StayOnTop>().wanted()
+            {
+                platform::keep_above_fullscreen(&window);
+            }
+
             if ticks % STRANDING_CHECK_EVERY == 0 {
                 if let Ok(Some(geometry)) = overlay::recover_if_stranded(&window) {
                     // Until the frontend hears about this it is placing her as a
