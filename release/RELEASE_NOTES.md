@@ -26,8 +26,10 @@ see *Known limitations*). Clicking through the warning is a one-time thing.
 **Windows**
 
 1. Double-click the downloaded `…-setup.exe`.
-2. Blue "Windows protected your PC" box → click **More info** → **Run anyway**.
-3. The installer runs. No admin password needed — she installs just for you.
+2. *If* a blue "Windows protected your PC" box appears → click **More info** →
+   **Run anyway**. Some machines never show it; that is normal and fine.
+3. The installer runs. It never asks for an admin password, because she installs
+   into your own user profile rather than for the whole computer.
 4. She's in the Start Menu as **Remielle Desktop Agent**.
 
 She has **no window and no taskbar button** — that is deliberate. What you get
