@@ -1,4 +1,4 @@
-# Remielle Desktop Agent v0.1.3
+# Remielle Desktop Agent v0.1.4
 
 蕾米埃尔·丹 — a desktop companion that lives on your screen, not in a browser tab.
 
@@ -6,9 +6,9 @@
 
 | Your computer | Download this | Then |
 |---|---|---|
-| **Windows — almost everyone** (Intel or AMD) | `Remielle Desktop Agent_0.1.3_x64-setup.exe` | Double-click it |
-| **Windows on ARM** — only Snapdragon / Surface Pro X | `Remielle Desktop Agent_0.1.3_arm64-setup.exe` | Double-click it |
-| **Mac** (Apple Silicon — M1 and newer) | `Remielle Desktop Agent_0.1.3_aarch64.dmg` | Double-click it |
+| **Windows — almost everyone** (Intel or AMD) | `Remielle Desktop Agent_0.1.4_x64-setup.exe` | Double-click it |
+| **Windows on ARM** — only Snapdragon / Surface Pro X | `Remielle Desktop Agent_0.1.4_arm64-setup.exe` | Double-click it |
+| **Mac** (Apple Silicon — M1 and newer) | `Remielle Desktop Agent_0.1.4_aarch64.dmg` | Double-click it |
 
 No commands to type, nothing to unzip. **If you are unsure on Windows, take the
 x64 one** — that is nearly every PC. To be certain: Settings → System → About →
@@ -51,6 +51,14 @@ Task Manager lists `remielle-desktop-agent.exe` at about 40 MB.
 Then open 设置 (Settings) and add an API key for your provider (DeepSeek, OpenAI,
 Groq, Ollama, or any OpenAI-compatible endpoint). The key is stored per-user on
 your machine — never sent anywhere except to the provider you chose.
+
+## What's new in 0.1.4
+
+- **She updates herself now.** Once this version is installed, every launch
+  checks GitHub for a newer release, installs it quietly, and offers a
+  restart. Every update is cryptographically signature-checked before it is
+  applied. A setting (设置 → 保持最新, on by default) turns it off; a manual
+  check button lives beside it. This is the last version you install by hand.
 
 ## What's new in 0.1.3
 
