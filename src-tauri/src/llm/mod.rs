@@ -1865,7 +1865,7 @@ async fn route_search(
         // empty because the token budget went to thinking.
         log::warn!(
             "router returned empty content: {}",
-            &payload.chars().take(300).collect::<String>()
+            payload.chars().take(300).collect::<String>()
         );
     } else {
         log::info!(
