@@ -233,6 +233,8 @@ export interface ToolSpec {
   description: string;
   /** Written for the user. Always shown instead of `name`. */
   userLabel: string;
+  /** The English UI's wording for the same switch. */
+  userLabelEn: string;
   risk: "read" | "act" | "confirm";
   /** Which part of the machine this touches. Drives the settings grouping. */
   group: "system" | "media" | "window" | "apps" | "herself";

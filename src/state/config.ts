@@ -74,6 +74,14 @@ export interface AiConfig {
   tools: string[];
   /** Palette for the floating panel. `auto` follows the OS. */
   panelTheme: PanelTheme;
+  /**
+   * UI language. `auto` follows the OS locale, the explicit values pin it.
+   *
+   * This governs the app's own chrome — settings, menus, hints, buttons.
+   * Her speech, tool summaries included, is hers and does not translate:
+   * the transcript quotes what she said, not a localisation of it.
+   */
+  language: "auto" | "zh-CN" | "en";
   /** Applications `open_app` may launch. Empty means it can open nothing. */
   appAllowlist: AppEntry[];
   /**
@@ -107,6 +115,7 @@ const DEFAULTS: AiConfig = {
    */
   tools: ["get_system_info"],
   panelTheme: "auto",
+  language: "auto",
   appAllowlist: [],
   searchEngineId: "",
   profile: EMPTY_PROFILE,
@@ -151,6 +160,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         stored.panelTheme === "light" || stored.panelTheme === "dark"
           ? stored.panelTheme
           : DEFAULTS.panelTheme,
+      language:
+        stored.language === "zh-CN" || stored.language === "en"
+          ? stored.language
+          : DEFAULTS.language,
       // Entries are {label, path} pairs from the file picker. Anything else —
       // including the bare strings an early version stored, which never
       // launched anything — is dropped rather than half-migrated.
@@ -224,6 +237,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       tools,
       appAllowlist,
       panelTheme,
+      language,
       searchEngineId,
       profile,
     } = get();
@@ -238,6 +252,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       tools,
       appAllowlist,
       panelTheme,
+      language,
       searchEngineId,
       profile,
     });

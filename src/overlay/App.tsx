@@ -13,7 +13,7 @@ import { useSpriteStore } from "@/state/sprite";
 import { attachSettingsSync } from "@/state/sync";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbient } from "./useAmbient";
-import { getMessages, resolveLocale, type Locale } from "@/i18n";
+import { effectiveLocale, getMessages, type Locale } from "@/i18n";
 import type { PackManifest } from "@/types/pack";
 import { ChatPanel } from "./chat/ChatPanel";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -33,7 +33,8 @@ export function App() {
   const [pack, setPack] = useState<PackManifest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const [locale] = useState<Locale>(() => resolveLocale(navigator.language));
+  const languageSetting = useConfigStore((s) => s.language);
+  const locale: Locale = effectiveLocale(languageSetting, navigator.language);
 
   const messages = getMessages(locale);
 

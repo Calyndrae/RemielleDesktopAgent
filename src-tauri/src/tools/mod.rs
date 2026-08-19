@@ -133,6 +133,9 @@ pub struct ToolSpec {
     pub description: &'static str,
     /// Written for the user, shown in settings and in confirmation prompts.
     pub user_label: &'static str,
+    /// The same sentence for the English UI. Only the app's chrome
+    /// translates — her own speech, tool summaries included, stays hers.
+    pub user_label_en: &'static str,
     pub risk: Risk,
     pub group: Group,
     pub platform: Platform,
@@ -195,6 +198,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       language of the user's computer. Use when the answer \
                       depends on when or where the user is.",
         user_label: "读取系统信息（时间、时区、系统语言）",
+        user_label_en: "Read system info (time, timezone, language)",
         risk: Risk::Read,
         group: Group::System,
         platform: Platform::Any,
@@ -206,6 +210,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       the foreground. Use to make a reply relevant to what they \
                       are doing. Returns nothing if the user has disabled this.",
         user_label: "读取当前前台应用",
+        user_label_en: "Read which app is in front",
         risk: Risk::Read,
         group: Group::System,
         platform: Platform::Desktop,
@@ -218,6 +223,7 @@ pub const CATALOG: &[ToolSpec] = &[
         description: "Switch the operating system between light and dark \
                       appearance.",
         user_label: "切换系统明暗主题",
+        user_label_en: "Switch the system light/dark theme",
         risk: Risk::Act,
         group: Group::System,
         platform: Platform::Desktop,
@@ -237,6 +243,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       applications such as games. Use when the user asks you to \
                       get out of the way, or to stay where they can see you.",
         user_label: "改变自己是否浮在全屏应用之上",
+        user_label_en: "Change whether she floats above fullscreen apps",
         risk: Risk::Act,
         group: Group::Herself,
         platform: Platform::Any,
@@ -260,6 +267,7 @@ pub const CATALOG: &[ToolSpec] = &[
         description: "Run a Microsoft Defender antivirus scan. A quick scan \
                       takes a few minutes; a full scan can take hours.",
         user_label: "运行 Windows Defender 病毒扫描",
+        user_label_en: "Run a Windows Defender virus scan",
         // Heavy on CPU and long-running: the user gets asked first, always.
         risk: Risk::Confirm,
         group: Group::System,
@@ -279,6 +287,7 @@ pub const CATALOG: &[ToolSpec] = &[
         description: "Open one of the applications the user has explicitly \
                       allowed. You cannot open anything not on that list.",
         user_label: "打开你许可过的应用",
+        user_label_en: "Open an app you allowed",
         risk: Risk::Act,
         group: Group::Apps,
         // Desktop since the launcher landed for both platforms; it was
@@ -305,6 +314,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       Volume moves one step at a time; there is no way to set \
                       an exact level.",
         user_label: "控制正在播放的音乐（播放/暂停、切歌、音量）",
+        user_label_en: "Control playing media (play/pause, skip, volume)",
         // Act, not Confirm: pressing pause is as reversible as pressing it
         // again, and a confirmation prompt for a media key would be the kind
         // of ceremony that teaches users to click through prompts.
@@ -330,6 +340,7 @@ pub const CATALOG: &[ToolSpec] = &[
                       left or right half. Only ever affects the foreground \
                       window, and can never close anything.",
         user_label: "摆布当前窗口（收起、铺满、靠左/靠右）",
+        user_label_en: "Arrange the window in front (minimize, fill, snap)",
         // Act: every one of these is undone by dragging the window back, and
         // nothing here can lose the user's work.
         risk: Risk::Act,
@@ -725,6 +736,7 @@ mod tests {
             name: "test_integer",
             description: "",
             user_label: "",
+            user_label_en: "",
             risk: Risk::Act,
             platform: Platform::Any,
             group: Group::System,
@@ -756,6 +768,7 @@ mod tests {
             name: "test_optional",
             description: "",
             user_label: "",
+            user_label_en: "",
             risk: Risk::Act,
             platform: Platform::Any,
             group: Group::System,

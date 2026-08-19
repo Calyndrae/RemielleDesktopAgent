@@ -40,3 +40,16 @@ export function pickLabel(
 ): string {
   return labels[locale] ?? labels[DEFAULT_LOCALE] ?? labels["en"] ?? fallback;
 }
+
+/**
+ * The user's effective UI language: the explicit setting, or the OS locale
+ * when the setting is `auto`. Lives here so every window resolves it the
+ * same way; components subscribe through their config store so a change in
+ * settings re-renders both windows without a restart.
+ */
+export function effectiveLocale(
+  setting: "auto" | "zh-CN" | "en",
+  osTag: string | null | undefined,
+): Locale {
+  return setting === "auto" ? resolveLocale(osTag) : setting;
+}

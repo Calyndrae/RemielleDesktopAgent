@@ -30,6 +30,7 @@ import { clearLastSession } from "@/lib/lastSession";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbientStore } from "@/state/ambient";
 import { MAX_SCALE, MIN_SCALE, useSpriteStore } from "@/state/sprite";
+import { effectiveLocale } from "@/i18n";
 import { attachSettingsSync } from "@/state/sync";
 import { useToolLogStore } from "@/state/toolLog";
 import {
@@ -132,6 +133,7 @@ export function SettingsApp() {
   const ambient = useAmbientStore();
   const sprite = useSpriteStore();
   const toolLog = useToolLogStore((s) => s.entries);
+  const locale = effectiveLocale(config.language, navigator.language);
   const blocked = useAmbientStore((s) => (s.hydrated ? ambientBlock(s.runtime, s.settings, new Date()) : null));
 
   useEffect(() => {
@@ -727,6 +729,36 @@ export function SettingsApp() {
           </span>
         </div>
 
+        <div className="field">
+          <span className="field__label">
+            {locale === "en" ? "Language / 语言" : "语言 / Language"}
+          </span>
+          <div className="segmented">
+            {([
+              ["auto", locale === "en" ? "Follow the system" : "跟随系统"],
+              ["zh-CN", "中文"],
+              ["en", "English"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`segmented__option${
+                  config.language === value ? " segmented__option--on" : ""
+                }`}
+                aria-pressed={config.language === value}
+                onClick={() => useConfigStore.getState().patch({ language: value })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="field__hint">
+            {locale === "en"
+              ? "Only the app's own controls translate. What she says is hers, in her own words."
+              : "只翻译应用自己的界面。她说的话是她自己的，不做翻译。"}
+          </span>
+        </div>
+
         <label className="field">
           <span className="field__label">
             大小 <span className="field__value">{Math.round(sprite.scale * 100)}%</span>
@@ -894,7 +926,7 @@ export function SettingsApp() {
                           useConfigStore.getState().patch({ tools: next });
                         }}
                       />
-                      <span>{tool.userLabel}</span>
+                      <span>{locale === "en" ? tool.userLabelEn : tool.userLabel}</span>
                       {tool.risk === "confirm" && (
                         <span className="tag">每次都会先问你</span>
                       )}
