@@ -102,6 +102,8 @@ export function SettingsApp() {
   const [autostart, setAutostartState] = useState(false);
   const [capturingShortcut, setCapturingShortcut] = useState(false);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
+  const [uninstalling, setUninstalling] = useState(false);
+  const [uninstallError, setUninstallError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
 
   /*
@@ -1145,6 +1147,37 @@ export function SettingsApp() {
             下次打开聊天时可以一键接着聊。只保留最近一次，不会攒成档案。
             关掉这个开关会同时删掉已经存下的那一份。
           </span>
+        </div>
+      </section>
+
+      <section className="group">
+        <h2 className="group__title">把她请走</h2>
+        <p className="group__note">
+          卸载会清掉她本体、API 密钥、设置和这里的所有记录。macOS 上这些先进废纸篓，
+          倒掉之前都找得回来；Windows 上会交给安装时附带的卸载器。
+          按下去会先再问你一次。
+        </p>
+        <div className="field">
+          <button
+            type="button"
+            className="btn btn--danger"
+            disabled={uninstalling}
+            onClick={() => {
+              setUninstalling(true);
+              void ipc
+                .uninstallApp()
+                .then(() => setUninstalling(false))
+                .catch((cause) => {
+                  setUninstalling(false);
+                  setUninstallError(String(cause));
+                });
+            }}
+          >
+            {uninstalling ? "等你确认…" : "卸载…"}
+          </button>
+          {uninstallError && (
+            <span className="field__hint note--bad">{uninstallError}</span>
+          )}
         </div>
       </section>
 

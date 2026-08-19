@@ -492,3 +492,10 @@ body {
 .ledger__summary {
   min-width: 0;
 }
+
+/* The one button whose consequence is leaving. Quietly red, not alarmed:
+   the native confirmation behind it does the warning. */
+.btn--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}

@@ -65,6 +65,11 @@ export const ipc = {
   /** Registers (or clears, with null) the global summon shortcut. */
   setSummonShortcut: (shortcut: string | null) =>
     invoke<void>("set_summon_shortcut", { shortcut }),
+  /**
+   * Asks the app to uninstall itself, behind a native confirmation.
+   * Deliberately a command and not a catalog tool: no model can reach it.
+   */
+  uninstallApp: () => invoke<void>("uninstall_app"),
 
   /**
    * Replaces the tray menu's strings once the locale is known.

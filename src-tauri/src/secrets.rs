@@ -339,6 +339,19 @@ pub async fn delete_key(account: String) -> Result<(), SecretError> {
     store::delete(&account)
 }
 
+/// Removes one account, cache and store, without the command plumbing.
+///
+/// Exists for the uninstaller: on Windows the keys live in the OS credential
+/// store, which the NSIS uninstaller cannot reach — leaving them behind
+/// would orphan secrets under this app's name after the app is gone.
+// Only the Windows uninstall path calls this — macOS trashes the whole
+// keys.json folder instead — so on other platforms it is knowingly unused.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub(crate) fn purge(account: &str) {
+    cache_lock().remove(account);
+    let _ = store::delete(account);
+}
+
 /// Reads a key into the process cache, and says whether it worked.
 ///
 /// Called once at startup for the configured provider. Everything that

@@ -5,6 +5,7 @@ mod platform;
 mod search;
 mod secrets;
 pub mod tools;
+mod uninstall;
 mod window;
 
 use tauri::{AppHandle, Manager, Runtime};
@@ -127,6 +128,7 @@ pub fn run() {
             llm::list_models,
             llm::ambient_line,
             search::verify_search,
+            uninstall::uninstall_app,
             quit_app,
             frontend_note,
         ])
