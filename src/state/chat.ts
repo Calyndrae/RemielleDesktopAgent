@@ -11,6 +11,7 @@ import {
 } from "@/lib/ipc";
 import { cancelPendingState, restingState, useAgentStore } from "./agent";
 import { clearLastSession, saveLastSession } from "@/lib/lastSession";
+import { useToolLogStore } from "./toolLog";
 import { composeProfileBlock } from "@/lib/profile";
 import { useConfigStore } from "./config";
 
@@ -499,6 +500,21 @@ export async function attachChatEvents(): Promise<void> {
       }
 
       case "toolResult": {
+        // Into the ledger before the transcript patch: the label was
+        // recorded when the call was announced, so it is looked up from the
+        // run this result belongs to.
+        const owner = useChatStore
+          .getState()
+          .messages.find((message) => message.id === assistantId);
+        const run = owner?.toolRuns.find((r) => r.callId === payload.callId);
+        if (run) {
+          useToolLogStore.getState().record({
+            time: Date.now(),
+            label: run.label,
+            summary: payload.summary,
+            ok: payload.ok,
+          });
+        }
         set((state) => ({
           messages: patchMessage(state.messages, assistantId, (message) => ({
             ...message,

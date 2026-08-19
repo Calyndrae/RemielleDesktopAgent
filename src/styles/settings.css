@@ -464,3 +464,31 @@ body {
   gap: 8px;
   margin: 6px 0;
 }
+
+/* The ledger: a quiet chronological list. Time in the muted color, her own
+   summary as the substance — the same sentence the transcript showed. */
+.ledger {
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.ledger__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.ledger__time {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger__summary {
+  min-width: 0;
+}

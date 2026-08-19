@@ -31,6 +31,7 @@ import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbientStore } from "@/state/ambient";
 import { MAX_SCALE, MIN_SCALE, useSpriteStore } from "@/state/sprite";
 import { attachSettingsSync } from "@/state/sync";
+import { useToolLogStore } from "@/state/toolLog";
 import {
   currentProvider,
   searchAvailable,
@@ -128,12 +129,14 @@ export function SettingsApp() {
   const [catalog, setCatalog] = useState<ToolSpec[]>([]);
   const ambient = useAmbientStore();
   const sprite = useSpriteStore();
+  const toolLog = useToolLogStore((s) => s.entries);
   const blocked = useAmbientStore((s) => (s.hydrated ? ambientBlock(s.runtime, s.settings, new Date()) : null));
 
   useEffect(() => {
     void useConfigStore.getState().hydrate();
     void useAmbientStore.getState().hydrate();
     void useSpriteStore.getState().hydrate();
+    void useToolLogStore.getState().hydrate();
 
     // The overlay writes too — dragging her, or the wheel resizing her — so
     // this window has to follow along rather than showing a stale number.
@@ -959,6 +962,43 @@ export function SettingsApp() {
               </div>
             );
           })
+        )}
+      </section>
+
+      <section className="group">
+        <h2 className="group__title">她动过什么</h2>
+        <p className="group__note">
+          每次她真的动了这台电脑，都会记在这里 —— 只记做了什么和什么时候，
+          参数和结果一概不存。最多保留 100 条，旧的自动掉出去。
+        </p>
+        {toolLog.length === 0 ? (
+          <p className="field__hint">还什么都没动过。</p>
+        ) : (
+          <>
+            <ul className="ledger">
+              {toolLog.map((entry) => (
+                <li className="ledger__row" key={`${entry.time}-${entry.summary}`}>
+                  <span className="ledger__time">
+                    {new Date(entry.time).toLocaleString("zh-CN", {
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                  <span className="ledger__summary">{entry.summary}</span>
+                  {!entry.ok && <span className="tag">没成功</span>}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => useToolLogStore.getState().clear()}
+            >
+              清空记录
+            </button>
+          </>
         )}
       </section>
 

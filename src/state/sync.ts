@@ -2,6 +2,7 @@ import { onSettingChanged } from "@/lib/persist";
 import { useAmbientStore } from "./ambient";
 import { useConfigStore } from "./config";
 import { useSpriteStore } from "./sprite";
+import { useToolLogStore } from "./toolLog";
 
 /**
  * Keeps the overlay and the settings window agreeing.
@@ -22,6 +23,7 @@ const WATCHED = [
   "sprite.placement",
   "ambient",
   "ambientState",
+  "toolLog",
 ] as const;
 
 export function attachSettingsSync(): Promise<() => void> {
@@ -36,6 +38,9 @@ export function attachSettingsSync(): Promise<() => void> {
       case "ambient":
       case "ambientState":
         void useAmbientStore.getState().hydrate();
+        break;
+      case "toolLog":
+        void useToolLogStore.getState().hydrate();
         break;
     }
   });
