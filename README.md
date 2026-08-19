@@ -25,12 +25,12 @@ implemented, with 216 Rust tests and 106 frontend tests.
 | Platform | State |
 |---|---|
 | macOS (Apple Silicon) | Builds, runs, released. Runs as an accessory process; transparency confirmed. |
-| macOS (Intel) | Configured, never built. |
+| macOS (Intel) | Builds in CI since 2026-08-19; never run on Intel hardware. |
 | Windows (ARM64) | Built, run and verified in a Windows 11 VM; released. |
 | Windows (x64) | Cross-compiled from the ARM64 VM and released; not yet run on x64 hardware. |
 
 Still unbuilt: fullscreen-game auto-hide (a Windows feature to write, not a
-call to wire) and the macOS Intel build. `session/HANDOFF.md` records the
+call to wire). `session/HANDOFF.md` records the
 full history and the reasoning.
 
 ## Features
