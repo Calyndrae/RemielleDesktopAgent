@@ -61,6 +61,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # rust-toolchain.toml redirects rustup to the pinned version, which is
+      # installed on demand *without* extra targets — so the Intel job, which
+      # cross-compiles on an ARM runner, must add its target explicitly. Run
+      # inside the workspace so the pin applies. Not in rust-toolchain.toml:
+      # the offline Windows VM reads that file too and cannot download.
+      - name: Add the build target to the pinned toolchain
+        run: rustup target add ${{ matrix.target }}
+
       # No version here: package.json's packageManager field pins pnpm,
       # and action-setup v4 refuses to be told twice.
       - uses: pnpm/action-setup@v4
