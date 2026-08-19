@@ -156,6 +156,16 @@ pub struct WireMessage {
     pub content: String,
 }
 
+/// One allow-listed application: what the model may say, and what it means.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppEntry {
+    /// Shown to the model and the transcript ("Spotify").
+    pub label: String,
+    /// Resolved only in Rust, never sent to any model.
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatRequest {
@@ -174,8 +184,13 @@ pub struct ChatRequest {
     #[serde(default)]
     pub tools: Vec<String>,
     /// Applications `open_app` is permitted to launch.
+    ///
+    /// Label/path pairs, both chosen through the OS file picker in settings.
+    /// Only the labels ever reach the model (as `open_app`'s enum); the path
+    /// stays on this side and is resolved from the label in
+    /// `apply_app_effects`, so nothing a model writes can name an executable.
     #[serde(default)]
-    pub app_allowlist: Vec<String>,
+    pub app_allowlist: Vec<AppEntry>,
     /// The Programmable Search engine's public id (`cx`).
     ///
     /// Not a secret and not in the credential store — it identifies which search
@@ -899,6 +914,14 @@ async fn run_stream<R: Runtime>(
         .await;
     }
 
+    // The schema and the validator speak labels; the paths stay in the
+    // entries until `apply_app_effects` resolves a validated label.
+    let app_labels: Vec<String> = request
+        .app_allowlist
+        .iter()
+        .map(|entry| entry.label.clone())
+        .collect();
+
     for round in 0..=MAX_TOOL_ROUNDS {
         // Tools are withheld on the last pass, so the model has to answer with
         // words rather than asking for a call that could never be honoured.
@@ -907,7 +930,7 @@ async fn run_stream<R: Runtime>(
         let body = match info.protocol {
             Protocol::OpenAiCompatible => {
                 let schema = if offer_tools {
-                    tools::openai_schema(&request.tools, &request.app_allowlist)
+                    tools::openai_schema(&request.tools, &app_labels)
                 } else {
                     Vec::new()
                 };
@@ -915,7 +938,7 @@ async fn run_stream<R: Runtime>(
             }
             Protocol::Gemini => {
                 let schema = if offer_tools {
-                    tools::gemini_schema(&request.tools, &request.app_allowlist)
+                    tools::gemini_schema(&request.tools, &app_labels)
                 } else {
                     Vec::new()
                 };
@@ -1012,8 +1035,8 @@ async fn run_stream<R: Runtime>(
                 }
                 _ => {
                     let mut outcome =
-                        tools::dispatch::dispatch(call, &request.tools, &request.app_allowlist);
-                    apply_app_effects(&app, call, &mut outcome);
+                        tools::dispatch::dispatch(call, &request.tools, &app_labels);
+                    apply_app_effects(&app, call, &request.app_allowlist, &mut outcome);
                     outcome
                 }
             };
@@ -1303,7 +1326,7 @@ pub(crate) mod tests {
     fn body_for(request: &ChatRequest) -> serde_json::Value {
         let info = provider::find(&request.provider).expect("provider");
         let messages = opening_messages(request);
-        let schema = crate::tools::openai_schema(&request.tools, &request.app_allowlist);
+        let schema = crate::tools::openai_schema(&request.tools, &[]);
         openai_body(request, info, &messages, &schema)
     }
 
@@ -1523,7 +1546,7 @@ mod tool_loop_tests {
     fn tools_reach_the_openai_body_only_when_some_are_enabled() {
         let with = with_tools("deepseek", false);
         let info = provider::find("deepseek").expect("provider");
-        let schema = crate::tools::openai_schema(&with.tools, &with.app_allowlist);
+        let schema = crate::tools::openai_schema(&with.tools, &[]);
         let body = openai_body(&with, info, &opening_messages(&with), &schema);
 
         // On a non-Windows build most of the catalog is filtered out, so assert
@@ -1552,7 +1575,7 @@ mod tool_loop_tests {
         // Gemini takes one `tools` array and rejects google_search alongside
         // functionDeclarations. Sending both fails the whole request.
         let searching = with_tools("gemini", true);
-        let schema = crate::tools::gemini_schema(&searching.tools, &searching.app_allowlist);
+        let schema = crate::tools::gemini_schema(&searching.tools, &[]);
         let body = gemini_body(&searching, &gemini_opening(&searching), &schema);
 
         assert!(body["tools"][0].get("google_search").is_some());
@@ -1565,7 +1588,7 @@ mod tool_loop_tests {
     #[test]
     fn gemini_gets_function_declarations_when_search_is_off() {
         let quiet = with_tools("gemini", false);
-        let schema = crate::tools::gemini_schema(&quiet.tools, &quiet.app_allowlist);
+        let schema = crate::tools::gemini_schema(&quiet.tools, &[]);
         let body = gemini_body(&quiet, &gemini_opening(&quiet), &schema);
 
         if schema.is_empty() {
@@ -1966,7 +1989,7 @@ mod app_effect_tests {
             ok: true,
         };
 
-        apply_app_effects(app.handle(), &call, &mut outcome);
+        apply_app_effects(app.handle(), &call, &[], &mut outcome);
 
         assert!(!outcome.ok, "no window, yet the outcome still claims success");
         assert!(
@@ -1974,6 +1997,34 @@ mod app_effect_tests {
             "the model must be told the truth: {}",
             outcome.result
         );
+    }
+
+    /// A label that resolves to nothing must not stay a success — the
+    /// resolution re-checks the allowlist rather than trusting the validator
+    /// upstream, and this pins the refusal side of that choice.
+    #[test]
+    fn an_open_app_label_that_resolves_to_nothing_downgrades_the_outcome() {
+        let app = tauri::test::mock_app();
+        let call = toolcall::ToolCall {
+            id: "call_1".into(),
+            name: "open_app".into(),
+            arguments: Ok(serde_json::json!({"app": "Spotify"})
+                .as_object()
+                .cloned()
+                .expect("object")),
+        };
+        let mut outcome = tools::dispatch::DispatchOutcome {
+            call_id: "call_1".into(),
+            tool: "open_app".into(),
+            result: "opened Spotify".into(),
+            summary: "帮你打开了 Spotify".into(),
+            ok: true,
+        };
+
+        apply_app_effects(app.handle(), &call, &[], &mut outcome);
+
+        assert!(!outcome.ok, "nothing was launched, yet the outcome claims success");
+        assert!(outcome.result.contains("did not open"), "{}", outcome.result);
     }
 
     /// Other tools pass through untouched — the effects layer is for the two
@@ -1989,7 +2040,7 @@ mod app_effect_tests {
             summary: "按下了播放键".into(),
             ok: true,
         };
-        apply_app_effects(app.handle(), &call, &mut outcome);
+        apply_app_effects(app.handle(), &call, &[], &mut outcome);
         assert!(outcome.ok);
     }
 }
@@ -2008,9 +2059,49 @@ mod app_effect_tests {
 fn apply_app_effects<R: Runtime>(
     app: &AppHandle<R>,
     call: &toolcall::ToolCall,
+    allowlist: &[AppEntry],
     outcome: &mut tools::dispatch::DispatchOutcome,
 ) {
-    if !outcome.ok || outcome.tool != "set_stay_on_top" {
+    if !outcome.ok {
+        return;
+    }
+
+    if outcome.tool == "open_app" {
+        let label = call
+            .args()
+            .ok()
+            .and_then(|args| args.get("app").and_then(|v| v.as_str()).map(str::to_string))
+            .unwrap_or_default();
+
+        // Validation already held the label against the allowlist, but the
+        // resolution repeats the check rather than trusting the earlier wall:
+        // if the two ever disagree, refusing beats launching.
+        let Some(entry) = allowlist.iter().find(|entry| entry.label == label) else {
+            outcome.ok = false;
+            outcome.result = format!(
+                "'open_app' could not resolve '{label}' to an allowed application. \
+                 Tell the user it did not open."
+            );
+            outcome.summary = format!("没找到「{label}」对应的应用，这次没打开");
+            return;
+        };
+
+        // The path being handed to the opener came from the OS file picker,
+        // stored at pick time — the model only ever chose the label above.
+        if let Err(error) = tauri_plugin_opener::OpenerExt::opener(app)
+            .open_path(entry.path.clone(), None::<&str>)
+        {
+            outcome.ok = false;
+            outcome.result = format!(
+                "'open_app' failed to launch '{label}': {error}. Tell the user \
+                 it did not open."
+            );
+            outcome.summary = format!("「{label}」没能打开：{error}");
+        }
+        return;
+    }
+
+    if outcome.tool != "set_stay_on_top" {
         return;
     }
 

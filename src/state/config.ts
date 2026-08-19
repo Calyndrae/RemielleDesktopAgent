@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { ipc, type ProviderInfo } from "@/lib/ipc";
+import { ipc, type ProviderInfo, type AppEntry } from "@/lib/ipc";
 import { readSetting, writeSetting } from "@/lib/persist";
 import type { PanelTheme } from "@/lib/theme";
 import { EMPTY_PROFILE, type UserProfile } from "@/lib/profile";
@@ -75,7 +75,7 @@ export interface AiConfig {
   /** Palette for the floating panel. `auto` follows the OS. */
   panelTheme: PanelTheme;
   /** Applications `open_app` may launch. Empty means it can open nothing. */
-  appAllowlist: string[];
+  appAllowlist: AppEntry[];
   /**
    * The Programmable Search engine id (`cx`).
    *
@@ -151,7 +151,18 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         stored.panelTheme === "light" || stored.panelTheme === "dark"
           ? stored.panelTheme
           : DEFAULTS.panelTheme,
-      appAllowlist: Array.isArray(stored.appAllowlist) ? stored.appAllowlist : [],
+      // Entries are {label, path} pairs from the file picker. Anything else —
+      // including the bare strings an early version stored, which never
+      // launched anything — is dropped rather than half-migrated.
+      appAllowlist: Array.isArray(stored.appAllowlist)
+        ? stored.appAllowlist.filter(
+            (entry): entry is AppEntry =>
+              typeof entry === "object" &&
+              entry !== null &&
+              typeof (entry as AppEntry).label === "string" &&
+              typeof (entry as AppEntry).path === "string",
+          )
+        : [],
       searchEngineId: stored.searchEngineId ?? DEFAULTS.searchEngineId,
       profile: { ...EMPTY_PROFILE, ...(stored.profile ?? {}) },
       providers,

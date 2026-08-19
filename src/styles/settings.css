@@ -424,3 +424,35 @@ body {
   color: var(--text-muted);
   letter-spacing: 0.02em;
 }
+
+/*
+ * The app allowlist under the Apps tool group.
+ *
+ * A list of names with a quiet remove beside each — not a table, not a second
+ * card. The full path lives in the row's tooltip rather than on screen: the
+ * label is what she and the transcript will say, so the label is what the
+ * list shows.
+ */
+.applist {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.applist__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.applist__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.applist__remove {
+  flex: none;
+}

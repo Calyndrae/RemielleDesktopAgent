@@ -232,7 +232,10 @@ pub const CATALOG: &[ToolSpec] = &[
         user_label: "打开你许可过的应用",
         risk: Risk::Act,
         group: Group::Apps,
-        platform: Platform::Windows,
+        // Desktop since the launcher landed for both platforms; it was
+        // Windows-only paper before that, and unreachable paper at that,
+        // because nothing let the user build the allowlist it indexes into.
+        platform: Platform::Desktop,
         params: &[Param {
             name: "app",
             description: "The allow-listed application to open. Must be one the \

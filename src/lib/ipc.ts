@@ -94,6 +94,8 @@ export const ipc = {
 
   loadPack: (id: string) => invoke<PackManifest>("load_pack", { id }),
   listPacks: () => invoke<PackManifest[]>("list_packs"),
+  /** Native file picker for the app allowlist. Null when the user cancels. */
+  pickApp: () => invoke<AppEntry | null>("pick_app"),
 
   // --- secrets ---
   // There is deliberately no `getKey`. The frontend can store, delete, and ask
@@ -191,10 +193,20 @@ export interface ChatRequest {
   webSearch: boolean;
   /** Catalog tools the user has switched on. Anything absent is never offered. */
   tools: string[];
-  /** Applications `open_app` may launch. */
-  appAllowlist: string[];
+  /** Applications `open_app` may launch. Labels reach the model; paths stay in Rust. */
+  appAllowlist: AppEntry[];
   /** Programmable Search engine id (`cx`). Public; the key is not sent. */
   searchEngineId: string;
+}
+
+/**
+ * One allow-listed application. The label is what the model may name and what
+ * the transcript shows; the path was chosen in the OS file picker and is only
+ * ever resolved back in Rust. No model output can reach it.
+ */
+export interface AppEntry {
+  label: string;
+  path: string;
 }
 
 export interface AmbientRequest {

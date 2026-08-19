@@ -1,3 +1,4 @@
+mod apps;
 mod assets;
 mod llm;
 mod platform;
@@ -116,6 +117,7 @@ pub fn run() {
             llm::provider::list_providers,
             llm::provider::check_key,
             tools::list_tools,
+            apps::pick_app,
             tools::active_window_name,
             llm::resolve_tool_confirm,
             llm::start_chat,

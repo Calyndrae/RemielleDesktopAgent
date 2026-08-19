@@ -151,6 +151,9 @@ pub fn dispatch(call: &ToolCall, enabled: &[String], allowlist: &[String]) -> Di
                 _ => "全屏应用打开时会自己让开".into(),
             },
         }),
+        // Same shape as set_stay_on_top: the launch itself happens in
+        // `llm::apply_app_effects`, which resolves the validated label to the
+        // path the user picked and downgrades this outcome if nothing opens.
         "open_app" => Ok(ToolOutcome {
             result: format!("opened {}", text("app")),
             summary: format!("帮你打开了 {}", text("app")),

@@ -821,6 +821,66 @@ export function SettingsApp() {
                     </label>
                   </div>
                 ))}
+                {group === "apps" && (
+                  /*
+                    The allowlist that makes open_app mean something. Entries
+                    come from the OS file picker only — she is shown the
+                    labels as a fixed menu and picks one; the path never
+                    passes through her or any model. An empty list means the
+                    switch above grants nothing, and says so.
+                  */
+                  <div className="field">
+                    <span className="field__label">她可以打开这些应用</span>
+                    {config.appAllowlist.length === 0 ? (
+                      <p className="field__hint">
+                        还没有添加任何应用 —— 上面的开关开着也打不开任何东西，
+                        直到你在这里选过。
+                      </p>
+                    ) : (
+                      <ul className="applist">
+                        {config.appAllowlist.map((entry) => (
+                          <li className="applist__row" key={entry.path}>
+                            <span className="applist__label" title={entry.path}>
+                              {entry.label}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn applist__remove"
+                              onClick={() => {
+                                useConfigStore.getState().patch({
+                                  appAllowlist: config.appAllowlist.filter(
+                                    (kept) => kept.path !== entry.path,
+                                  ),
+                                });
+                              }}
+                            >
+                              移除
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        void ipc.pickApp().then((picked) => {
+                          if (!picked) return;
+                          const current =
+                            useConfigStore.getState().appAllowlist;
+                          if (current.some((e) => e.path === picked.path)) {
+                            return;
+                          }
+                          useConfigStore
+                            .getState()
+                            .patch({ appAllowlist: [...current, picked] });
+                        });
+                      }}
+                    >
+                      添加应用…
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
