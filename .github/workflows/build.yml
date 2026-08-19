@@ -103,6 +103,16 @@ jobs:
       - name: Build
         run: pnpm tauri build --target ${{ matrix.target }}
 
+      # The signature check the first three macOS releases needed and did not
+      # have: a dmg whose app has no CodeResources is refused as "damaged" on
+      # every Mac but the one that built it.
+      - name: Check the macOS bundle is not damaged
+        if: runner.os == 'macOS'
+        run: |
+          for dmg in src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
+            scripts/check-macos-dmg.sh "$dmg"
+          done
+
       # Only the things a person would actually download. The bundle directory
       # also holds the unpacked `.app`, intermediate NSIS scripts and the raw
       # executable; uploading all of it makes the artifact several times larger
