@@ -125,6 +125,13 @@ mod imp {
          end tell\n";
 
     fn script(action: Arrange) -> &'static str {
+        // Every computed coordinate is coerced to an integer before it is
+        // written. System Events *silently ignores* a size write containing a
+        // fractional value: measured on this machine, `set size to
+        // {1710, 536.5}` leaves the window untouched while the position write
+        // beside it lands. On a screen whose work-area halves happen to be
+        // whole numbers the raw arithmetic works, which is exactly how the
+        // original snap scripts shipped without anyone noticing the trap.
         match action {
             Arrange::Minimize => {
                 "tell application \"System Events\" to tell (first process whose frontmost is true) \
@@ -133,41 +140,49 @@ mod imp {
             Arrange::Maximize => {
                 "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
                  tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 set workH to (vh - menuH) as integer\n\
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
                  set position of front window to {vx, menuH}\n\
-                 set size of front window to {vw, vh - menuH}\n\
+                 set size of front window to {vw, workH}\n\
                  end tell"
             }
             Arrange::SnapLeft => {
                 "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
                  tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 set workH to (vh - menuH) as integer\n\
+                 set halfW to (vw / 2) as integer\n\
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
                  set position of front window to {vx, menuH}\n\
-                 set size of front window to {vw / 2, vh - menuH}\n\
+                 set size of front window to {halfW, workH}\n\
                  end tell"
             }
             Arrange::SnapRight => {
                 "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
                  tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 set workH to (vh - menuH) as integer\n\
+                 set halfW to (vw / 2) as integer\n\
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
-                 set position of front window to {vw / 2, menuH}\n\
-                 set size of front window to {vw / 2, vh - menuH}\n\
+                 set position of front window to {halfW, menuH}\n\
+                 set size of front window to {vw - halfW, workH}\n\
                  end tell"
             }
             Arrange::SnapTop => {
                 "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
                  tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 set halfH to ((vh - menuH) / 2) as integer\n\
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
                  set position of front window to {vx, menuH}\n\
-                 set size of front window to {vw, (vh - menuH) / 2}\n\
+                 set size of front window to {vw, halfH}\n\
                  end tell"
             }
             Arrange::SnapBottom => {
                 "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
                  tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 set halfH to ((vh - menuH) / 2) as integer\n\
+                 set bottomY to (menuH + halfH) as integer\n\
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
-                 set position of front window to {vx, menuH + (vh - menuH) / 2}\n\
-                 set size of front window to {vw, (vh - menuH) / 2}\n\
+                 set position of front window to {vx, bottomY}\n\
+                 set size of front window to {vw, halfH}\n\
                  end tell"
             }
             // Keeps the window's own size; only the position moves.
@@ -176,20 +191,24 @@ mod imp {
                  tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
                  set {ww, wh} to size of front window\n\
-                 set position of front window to {vx + (vw - ww) / 2, menuH + (vh - menuH - wh) / 2}\n\
+                 set cx to (vx + (vw - ww) / 2) as integer\n\
+                 set cy to (menuH + (vh - menuH - wh) / 2) as integer\n\
+                 set position of front window to {cx, cy}\n\
                  end tell"
             }
-            // macOS keeps no \"previous rectangle\" for AX-moved windows the
+            // macOS keeps no "previous rectangle" for AX-moved windows the
             // way Windows' SW_RESTORE does, so restore here has a defined
             // meaning of its own: a centred window at 70% of the work area —
             // the un-maximise people actually want when they say 还原.
             Arrange::Restore => {
                 "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
                  tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 set targetW to (vw * 0.7) as integer\n\
+                 set targetH to ((vh - menuH) * 0.7) as integer\n\
+                 set rx to (vx + (vw - targetW) / 2) as integer\n\
+                 set ry to (menuH + (vh - menuH - targetH) / 2) as integer\n\
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
-                 set targetW to vw * 0.7\n\
-                 set targetH to (vh - menuH) * 0.7\n\
-                 set position of front window to {vx + (vw - targetW) / 2, menuH + (vh - menuH - targetH) / 2}\n\
+                 set position of front window to {rx, ry}\n\
                  set size of front window to {targetW, targetH}\n\
                  end tell"
             }
