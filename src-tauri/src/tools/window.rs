@@ -27,11 +27,24 @@ pub enum Arrange {
     Maximize,
     SnapLeft,
     SnapRight,
+    SnapTop,
+    SnapBottom,
+    Centre,
+    Restore,
 }
 
 /// The catalog's allowed values, written once and shared with the spec so the
 /// two cannot drift — the bug `media.rs` records in its own history.
-pub const ACTIONS: &[&str] = &["minimize", "maximize", "snap_left", "snap_right"];
+pub const ACTIONS: &[&str] = &[
+    "minimize",
+    "maximize",
+    "snap_left",
+    "snap_right",
+    "snap_top",
+    "snap_bottom",
+    "centre",
+    "restore",
+];
 
 impl Arrange {
     fn parse(action: &str) -> Result<Self, ToolError> {
@@ -40,6 +53,10 @@ impl Arrange {
             "maximize" => Ok(Self::Maximize),
             "snap_left" => Ok(Self::SnapLeft),
             "snap_right" => Ok(Self::SnapRight),
+            "snap_top" => Ok(Self::SnapTop),
+            "snap_bottom" => Ok(Self::SnapBottom),
+            "centre" => Ok(Self::Centre),
+            "restore" => Ok(Self::Restore),
             other => Err(ToolError::NotAllowed {
                 param: "action".into(),
                 allowed: format!("{} (got {other:?})", ACTIONS.join(", ")),
@@ -53,6 +70,10 @@ impl Arrange {
             Self::Maximize => "把当前窗口铺满了屏幕",
             Self::SnapLeft => "把当前窗口靠到了左半边",
             Self::SnapRight => "把当前窗口靠到了右半边",
+            Self::SnapTop => "把当前窗口靠到了上半边",
+            Self::SnapBottom => "把当前窗口靠到了下半边",
+            Self::Centre => "把当前窗口摆到了屏幕中间",
+            Self::Restore => "把当前窗口恢复成了普通大小",
         }
     }
 
@@ -62,6 +83,10 @@ impl Arrange {
             Self::Maximize => "front_window=maximized",
             Self::SnapLeft => "front_window=snapped_left",
             Self::SnapRight => "front_window=snapped_right",
+            Self::SnapTop => "front_window=snapped_top",
+            Self::SnapBottom => "front_window=snapped_bottom",
+            Self::Centre => "front_window=centred",
+            Self::Restore => "front_window=restored",
         }
     }
 }
@@ -127,6 +152,45 @@ mod imp {
                  tell application \"System Events\" to tell (first process whose frontmost is true)\n\
                  set position of front window to {vw / 2, menuH}\n\
                  set size of front window to {vw / 2, vh - menuH}\n\
+                 end tell"
+            }
+            Arrange::SnapTop => {
+                "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
+                 tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 tell application \"System Events\" to tell (first process whose frontmost is true)\n\
+                 set position of front window to {vx, menuH}\n\
+                 set size of front window to {vw, (vh - menuH) / 2}\n\
+                 end tell"
+            }
+            Arrange::SnapBottom => {
+                "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
+                 tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 tell application \"System Events\" to tell (first process whose frontmost is true)\n\
+                 set position of front window to {vx, menuH + (vh - menuH) / 2}\n\
+                 set size of front window to {vw, (vh - menuH) / 2}\n\
+                 end tell"
+            }
+            // Keeps the window's own size; only the position moves.
+            Arrange::Centre => {
+                "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
+                 tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 tell application \"System Events\" to tell (first process whose frontmost is true)\n\
+                 set {ww, wh} to size of front window\n\
+                 set position of front window to {vx + (vw - ww) / 2, menuH + (vh - menuH - wh) / 2}\n\
+                 end tell"
+            }
+            // macOS keeps no \"previous rectangle\" for AX-moved windows the
+            // way Windows' SW_RESTORE does, so restore here has a defined
+            // meaning of its own: a centred window at 70% of the work area —
+            // the un-maximise people actually want when they say 还原.
+            Arrange::Restore => {
+                "tell application \"System Events\" to set menuH to item 2 of (get size of menu bar 1 of application process \"Finder\")\n\
+                 tell application \"Finder\" to set {vx, vy, vw, vh} to bounds of window of desktop\n\
+                 tell application \"System Events\" to tell (first process whose frontmost is true)\n\
+                 set targetW to vw * 0.7\n\
+                 set targetH to (vh - menuH) * 0.7\n\
+                 set position of front window to {vx + (vw - targetW) / 2, menuH + (vh - menuH - targetH) / 2}\n\
+                 set size of front window to {targetW, targetH}\n\
                  end tell"
             }
         }
@@ -195,8 +259,8 @@ mod imp {
         GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOZORDER, SW_MAXIMIZE, SW_MINIMIZE,
-        SW_RESTORE,
+        GetForegroundWindow, GetWindowRect, SetWindowPos, ShowWindow, SWP_NOSIZE, SWP_NOZORDER,
+        SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE,
     };
 
     fn foreground() -> Result<HWND, ToolError> {
@@ -239,13 +303,21 @@ mod imp {
             Arrange::Maximize => unsafe {
                 let _ = ShowWindow(hwnd, SW_MAXIMIZE);
             },
-            Arrange::SnapLeft | Arrange::SnapRight => {
+            // Windows remembers the pre-maximise rectangle itself, so restore
+            // is the OS's own idea of "back to normal" — better than anything
+            // this code could invent. (macOS has no such memory; see its arm.)
+            Arrange::Restore => unsafe {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+            },
+            Arrange::SnapLeft | Arrange::SnapRight | Arrange::SnapTop | Arrange::SnapBottom => {
                 let area = work_area(hwnd)?;
-                let width = (area.right - area.left) / 2;
-                let x = if matches!(action, Arrange::SnapLeft) {
-                    area.left
-                } else {
-                    area.left + width
+                let full_w = area.right - area.left;
+                let full_h = area.bottom - area.top;
+                let (x, y, w, h) = match action {
+                    Arrange::SnapLeft => (area.left, area.top, full_w / 2, full_h),
+                    Arrange::SnapRight => (area.left + full_w / 2, area.top, full_w / 2, full_h),
+                    Arrange::SnapTop => (area.left, area.top, full_w, full_h / 2),
+                    _ => (area.left, area.top + full_h / 2, full_w, full_h / 2),
                 };
 
                 // A maximised window ignores SetWindowPos, so it is restored
@@ -255,16 +327,27 @@ mod imp {
                 // rectangle and no z-order change.
                 unsafe {
                     let _ = ShowWindow(hwnd, SW_RESTORE);
-                    SetWindowPos(
-                        hwnd,
-                        None,
-                        x,
-                        area.top,
-                        width,
-                        area.bottom - area.top,
-                        SWP_NOZORDER,
-                    )
-                    .map_err(|e| ToolError::Failed(e.to_string()))?;
+                    SetWindowPos(hwnd, None, x, y, w, h, SWP_NOZORDER)
+                        .map_err(|e| ToolError::Failed(e.to_string()))?;
+                }
+            }
+            Arrange::Centre => {
+                let area = work_area(hwnd)?;
+                let mut rect = RECT::default();
+                // SAFETY: valid handle; the call only writes into `rect`.
+                unsafe {
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                    GetWindowRect(hwnd, &mut rect).map_err(|e| ToolError::Failed(e.to_string()))?;
+                }
+                let w = rect.right - rect.left;
+                let h = rect.bottom - rect.top;
+                let x = area.left + ((area.right - area.left) - w) / 2;
+                let y = area.top + ((area.bottom - area.top) - h) / 2;
+                // SAFETY: as above. NOSIZE keeps the window's own size — the
+                // point of centring is that only the position moves.
+                unsafe {
+                    SetWindowPos(hwnd, None, x, y, 0, 0, SWP_NOZORDER | SWP_NOSIZE)
+                        .map_err(|e| ToolError::Failed(e.to_string()))?;
                 }
             }
         }
