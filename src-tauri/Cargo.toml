@@ -28,7 +28,10 @@ tauri = { version = "2", features = [
 ] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
-tauri-plugin-updater = "2"
+# native-tls, not the default rustls: same decision the app already made for
+# reqwest on desktop -- and on aarch64-windows, rustls' ring needs clang,
+# which the offline build VM does not have and cannot download.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls"] }
 tauri-plugin-fs = "2"
 tauri-plugin-store = "2"
 tauri-plugin-os = "2"
