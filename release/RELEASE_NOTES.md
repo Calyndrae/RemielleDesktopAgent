@@ -1,4 +1,4 @@
-# Remielle Desktop Agent v0.1.2
+# Remielle Desktop Agent v0.1.3
 
 蕾米埃尔·丹 — a desktop companion that lives on your screen, not in a browser tab.
 
@@ -6,9 +6,9 @@
 
 | Your computer | Download this | Then |
 |---|---|---|
-| **Windows — almost everyone** (Intel or AMD) | `Remielle Desktop Agent_0.1.2_x64-setup.exe` | Double-click it |
-| **Windows on ARM** — only Snapdragon / Surface Pro X | `Remielle Desktop Agent_0.1.2_arm64-setup.exe` | Double-click it |
-| **Mac** (Apple Silicon — M1 and newer) | `Remielle Desktop Agent_0.1.2_aarch64.dmg` | Double-click it |
+| **Windows — almost everyone** (Intel or AMD) | `Remielle Desktop Agent_0.1.3_x64-setup.exe` | Double-click it |
+| **Windows on ARM** — only Snapdragon / Surface Pro X | `Remielle Desktop Agent_0.1.3_arm64-setup.exe` | Double-click it |
+| **Mac** (Apple Silicon — M1 and newer) | `Remielle Desktop Agent_0.1.3_aarch64.dmg` | Double-click it |
 
 No commands to type, nothing to unzip. **If you are unsure on Windows, take the
 x64 one** — that is nearly every PC. To be certain: Settings → System → About →
@@ -51,6 +51,37 @@ Task Manager lists `remielle-desktop-agent.exe` at about 40 MB.
 Then open 设置 (Settings) and add an API key for your provider (DeepSeek, OpenAI,
 Groq, Ollama, or any OpenAI-compatible endpoint). The key is stored per-user on
 your machine — never sent anywhere except to the provider you chose.
+
+## What's new in 0.1.3
+
+- **The Mac download works now.** Every previous release's `.dmg` contained an
+  app with an incomplete signature, which macOS refuses with "damaged and
+  should be moved to the Trash" — a hard block with no Open Anyway. If that
+  happened to you: this release is the fix. Download the 0.1.3 dmg and the
+  normal first-run steps below apply. (The one-line install script always
+  worked, because it cleared the flag the dmg tripped.)
+- **She keeps a ledger.** Settings gains 她动过什么: every change she makes to
+  the machine is listed with a time and her own description. Readings are
+  deliberately excluded — a list of which apps you had open all day is a
+  record this app promises not to keep. Capped at 100, one clear button.
+- **A summon hotkey.** Record a combination in Settings and she appears from
+  anywhere, chat open — even if her display was unplugged.
+- **Four more window moves**: snap to the top or bottom half, centre, and
+  restore. Also fixed underneath: macOS silently ignores window sizes with
+  fractional pixels, which could make snapping a no-op on some screens.
+- **An uninstaller in Settings.** 把她请走: on macOS everything goes to the
+  Trash (recoverable); on Windows it hands over to the real uninstaller after
+  clearing stored keys. Behind a native confirmation.
+- **Her tools stopped exaggerating.** Two catalog entries reported success
+  without doing anything (stay-on-top, open apps); both now actually act, and
+  a failure is reported as one. `open_app` gained its missing allowlist UI —
+  pick applications with the system file dialog, she can open only those.
+- **A language toggle** (Settings → 角色): follow the OS, 中文, or English.
+  The app's own controls translate; what she says is hers. (The full English
+  settings translation is still in progress — menus and core controls first.)
+- Quieter reliability work: replies that die silently now say why, tools that
+  hang are killed at a deadline, a virus scan no longer blocks the app for
+  hours, and CI now actually builds every platform on every push.
 
 ## What's new in 0.1.2
 
@@ -108,8 +139,10 @@ tool, ever, by design.
 
 ## Uninstalling
 
-**Windows**: Settings → Apps → Installed apps → Remielle Desktop Agent →
-Uninstall. **macOS**: drag her from Applications to the Trash.
+Easiest on either platform: her own 设置 → 把她请走, which also cleans up
+stored keys and settings. Or the traditional ways — **Windows**: Settings →
+Apps → Installed apps → Remielle Desktop Agent → Uninstall; **macOS**: drag
+her from Applications to the Trash.
 
 ## For people who prefer the command line
 
