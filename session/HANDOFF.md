@@ -3,11 +3,11 @@
 Everything a fresh assistant needs to pick this up without re-deriving it.
 Written for the Claude Code session that continues this on a Mac.
 
-**Working tree:** `~/GIT/RemielleDesktopAgent` on the Mac. This is a **local
-repository with no remote** — it was reconstructed from `RemielleDesktopAgent.zip`
-rather than cloned, so it shares no history with the GitHub copy below. Anything
-needing a remote (notably the Windows build via Actions) is blocked until one is
-added.
+**Working tree:** `~/GIT/RemielleDesktopAgent` on the Mac, pushed to
+`github.com/Calyndrae/RemielleDesktopAgent` (force-pushed over the old copy on
+2026-08-12; three releases live there). The "local repository with no remote"
+era this paragraph used to describe is over — CI runs on every push, and §12
+records the day it was discovered to have been failing silently.
 
 **Recovery point:** commit `57d9aeb`, tag `zip-baseline` — all 220 files exactly
 as the zip shipped them. `session/DELETED.md` records what was removed after it.
@@ -569,3 +569,50 @@ v0.1.1 prepared: version bumped in tauri.conf.json / Cargo.toml /
 package.json. Release scope: media_control + arrange_window + settings tool
 grouping, markdown/KaTeX renderer with favicon citation chips, keys.json
 storage (Keychain removed), router/greeting token fixes.
+
+
+## 12. Phase 0 — the truth repairs (2026-08-19)
+
+A three-agent research pass (code inventory, market landscape, gap audit —
+reconciled in `session/ROADMAP.md`) found the project lying to itself in
+several places. All fixed in this phase:
+
+- **CI had been red for 21 consecutive runs across all three releases.** Two
+  causes: `pnpm/action-setup@v4` refuses `version:` when package.json already
+  pins `packageManager` (every frontend-touching job died at step 3 — the
+  Playwright layout check had *never* run in CI), and a clippy 1.97 lint under
+  a toolchain drift. `rust-toolchain.toml` now pins 1.97.1 **with components**
+  — the pin redirects rustup, which installs the version bare, so the file
+  must name clippy/rustfmt itself. 1.97.1 was chosen because the offline
+  Windows VM already has it and cannot download another.
+- **Two of the eight tools were reporting stubs.** `set_stay_on_top` and
+  `open_app` formatted success strings and did nothing. Both are real now,
+  via `llm::apply_app_effects`: dispatch stays a pure executor, the effects
+  run where the AppHandle lives, and failures downgrade the outcome so the
+  transcript cannot claim what did not happen. `set_stay_on_top` lost its
+  never-implemented `ask`/`scope`; `open_app` gained its missing allowlist UI
+  (OS file picker → label/path pairs; the model only ever sees labels).
+- **The empty-reply hole is guarded on the main chat path** — a round ending
+  with a finish_reason, no content and no calls now errors with the reason
+  named instead of rendering a blank bubble. Same reasoning-burn signature
+  that hit the router (60→400) and the greeting (120→600).
+- **The search router has its own 15s budget** instead of inheriting the
+  90s streaming read-timeout (worst case was ~110s of silence before the
+  user's request even went out).
+- **Nothing can park a thread forever**: cancelled streams drop their parked
+  confirmations (the registry doc promised this; now it is true),
+  every subprocess runs under `tools::run_with_timeout`, and `security_scan`
+  starts Defender and says "started" rather than blocking a worker for the
+  hours its own description advertises.
+- **README reconciled with reality** — it still said Windows was never built,
+  search was unbuilt, and the UI was bilingual.
+
+Voice research (user asked): HoYoverse's ZZZ derivative-works guide V1.0
+tolerates a free non-commercial fan app, but **cloning any official VA is
+off-limits three ways** — the guide itself requires the VA's own
+authorization for voice as a personal right (三 Q1(3)), ripped audio only
+covers personal use, and PRC Civil Code 1023 / the 2024 Beijing Internet
+Court AI-voice judgment back the VA. A generic, deliberately-unlike TTS
+voice is the only lawful path if voice ever happens. Required notice when
+official material is used: © All rights reserved by miHoYo + the
+respective-owners line; the fan-work disclaimer is now in the README.

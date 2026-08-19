@@ -17,19 +17,21 @@ idle → thinking → drawing.
 
 ## Status
 
-Windows-first by design; **macOS builds and runs**. The overlay, chat panel,
-streaming, provider support, tool loop, settings and ambient behaviour are
-implemented, with 157 Rust tests and 78 frontend tests.
+Both desktop platforms build, run, and ship: releases carry a macOS dmg and
+Windows installers for x64 and ARM64. The overlay, chat panel, streaming,
+provider support, tool loop, web search, settings and ambient behaviour are
+implemented, with 216 Rust tests and 106 frontend tests.
 
 | Platform | State |
 |---|---|
-| macOS (Apple Silicon) | Builds, launches, runs as an accessory process. Transparency confirmed. |
+| macOS (Apple Silicon) | Builds, runs, released. Runs as an accessory process; transparency confirmed. |
 | macOS (Intel) | Configured, never built. |
-| Windows | Configured and unit-tested, **never built or run**. |
+| Windows (ARM64) | Built, run and verified in a Windows 11 VM; released. |
+| Windows (x64) | Cross-compiled from the ARM64 VM and released; not yet run on x64 hardware. |
 
-Not yet built at all: tray icon, run-at-login, fullscreen-game auto-hide, slash
-commands, and the proactive-greeting UI. `session/HANDOFF.md` §5 has the
-prioritised list and the reasoning.
+Still unbuilt: fullscreen-game auto-hide (a Windows feature to write, not a
+call to wire) and the macOS Intel build. `session/HANDOFF.md` records the
+full history and the reasoning.
 
 ## Features
 
@@ -38,20 +40,20 @@ prioritised list and the reasoning.
 - Chat panel with streaming responses, expandable reasoning, copy / regenerate
 - Providers: OpenAI-compatible (OpenAI, DeepSeek, Grok, OpenRouter, Ollama) and
   Google Gemini
-- API keys stored in the OS credential store — Keychain on macOS, Credential
-  Manager via DPAPI on Windows. Never in a config file, and never readable from
-  JavaScript: there is no command that returns a key
+- API keys stored per-user — DPAPI on Windows, a 0600 file on macOS (the
+  Keychain is deliberately out: its ACLs bind to the binary's signature, which
+  a locally-built app changes every rebuild). Never readable from JavaScript:
+  there is no command that returns a key
 - A fixed catalog of typed tools with enum-constrained parameters. No shell tool,
   and a test fails the build if one is ever added
 - Sessions are **not** kept by default; you are asked whether to save on close
 - Export to Markdown, JSON, or a handoff for another assistant
 - Occasional proactive behaviour with quiet hours, a daily cap and a "not today"
+- Keyless web search (Wikipedia, DuckDuckGo, GDELT, Google News) routed and
+  fetched in Rust — the model picks among results; it can never name a URL
 - Light and dark panel themes, both opaque, both measured against WCAG AA
-- Bilingual UI (简体中文 / English)
-
-Planned, not built: web search with an agentic search → pick-links → fetch loop
-for providers without native search, and `/emote change <name>` with live
-previews.
+- UI in Simplified Chinese; tray, menus and fault panels also in English. A
+  full English UI is open work, not a shipped feature.
 
 ## Tech stack
 
@@ -90,21 +92,23 @@ right version is fetched automatically.
 
 ```bash
 pnpm typecheck       # TypeScript
-pnpm test            # 78 frontend tests
+pnpm test            # frontend tests
 pnpm layout:check    # Playwright layout regression on the chat panel
 pnpm demo            # browser demo of the real components, no Tauri
 pnpm demo:build      # → demo-standalone.html, one self-contained file
 
 cd src-tauri
-cargo test           # 157 tests
+cargo test           # the Rust suite
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
 ## Building
 
-There is no cross-compile. Tauri bundles against the host's own webview and
-packager, so each platform's installer must be produced on that platform.
+Bundling needs the target platform's webview and packager, so installers are
+produced per-platform — with one exception that works in practice: the released
+x64 Windows build is a `--target x86_64-pc-windows-msvc` cross-compile from an
+ARM64 Windows host.
 `bundle.targets` is `["nsis", "app", "dmg"]` and Tauri skips whichever do not
 apply, so the same command is correct on both.
 
