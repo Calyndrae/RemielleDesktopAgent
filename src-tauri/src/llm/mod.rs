@@ -121,6 +121,9 @@ pub enum StreamEvent {
         tool: String,
         /// The catalog's user-facing label, never the raw tool name.
         label: String,
+        /// The tool's tier, so the frontend can tell a change from a reading
+        /// without keeping its own copy of the catalog.
+        risk: tools::Risk,
     },
     /// A tool finished, one way or another.
     ToolResult {
@@ -1029,6 +1032,7 @@ async fn run_stream<R: Runtime>(
                     call_id: call.id.clone(),
                     tool: call.name.clone(),
                     label: label.clone(),
+                    risk: spec.map_or(tools::Risk::Read, |s| s.risk),
                 },
             );
 
@@ -1792,6 +1796,7 @@ mod wire_format {
                 call_id: "c1".into(),
                 tool: "get_system_info".into(),
                 label: "读取系统信息".into(),
+                risk: tools::Risk::Read,
             },
             StreamEvent::ToolResult {
                 stream_id: "s1".into(),
@@ -1833,6 +1838,7 @@ mod wire_format {
                 call_id: "c".into(),
                 tool: "t".into(),
                 label: "l".into(),
+                risk: tools::Risk::Act,
             })["type"],
             "toolCall"
         );

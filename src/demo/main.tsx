@@ -163,7 +163,7 @@ function scriptToolRun(prompt: string): boolean {
     useChatStore.setState((state) => ({
       messages: patchMessage(state.messages, id, (m) => ({
         ...m,
-        toolRuns: [...m.toolRuns, { callId, tool: "demo", label, summary: null, ok: null }],
+        toolRuns: [...m.toolRuns, { callId, tool: "demo", label, risk: scan ? "confirm" : "act", summary: null, ok: null }],
       })),
     }));
 

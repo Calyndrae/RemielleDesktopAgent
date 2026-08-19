@@ -47,6 +47,8 @@ export interface ToolRun {
   tool: string;
   /** The catalog's user-facing label. The raw tool name is never shown. */
   label: string;
+  /** The tool's tier. Read-tier runs are kept out of the ledger. */
+  risk: "read" | "act" | "confirm";
   /** Plain-language outcome; absent while the call is still in flight. */
   summary: string | null;
   /** null = still running or waiting on you. */
@@ -490,6 +492,7 @@ export async function attachChatEvents(): Promise<void> {
                 callId: payload.callId,
                 tool: payload.tool,
                 label: payload.label,
+                risk: payload.risk,
                 summary: null,
                 ok: null,
               },
@@ -507,7 +510,13 @@ export async function attachChatEvents(): Promise<void> {
           .getState()
           .messages.find((message) => message.id === assistantId);
         const run = owner?.toolRuns.find((r) => r.callId === payload.callId);
-        if (run) {
+        // Read-tier tools are deliberately absent from the ledger. The
+        // section says 她动过什么 and means it: a reading changed nothing.
+        // It is also the privacy line — `get_active_window`'s summary names
+        // the app you have open, and a persisted, capped list of those is a
+        // record of what you use all day. The ambient path already refuses
+        // to keep them; this must not become the back door that does.
+        if (run && run.risk !== "read") {
           useToolLogStore.getState().record({
             time: Date.now(),
             label: run.label,

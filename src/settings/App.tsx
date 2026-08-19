@@ -58,8 +58,12 @@ import {
  */
 function comboFrom(event: React.KeyboardEvent): string | null {
   const mods: string[] = [];
+  // Meta is the platform's primary modifier, so it maps to the portable
+  // name. Control is always Control: mapping it to CmdOrCtrl would register
+  // Cmd+Shift+R on a Mac for someone who pressed Ctrl+Shift+R, and the key
+  // they pressed would then do nothing.
   if (event.metaKey) mods.push("CmdOrCtrl");
-  if (event.ctrlKey && !event.metaKey) mods.push(mods.length ? "Ctrl" : "CmdOrCtrl");
+  if (event.ctrlKey) mods.push("Control");
   if (event.altKey) mods.push("Alt");
   if (event.shiftKey) mods.push("Shift");
   if (mods.length === 0) return null;

@@ -258,7 +258,14 @@ export type StreamEvent =
   | { type: "content"; streamId: string; text: string }
   | { type: "reasoning"; streamId: string; text: string }
   | { type: "tool"; streamId: string; activity: ToolActivity }
-  | { type: "toolCall"; streamId: string; callId: string; tool: string; label: string }
+  | {
+      type: "toolCall";
+      streamId: string;
+      callId: string;
+      tool: string;
+      label: string;
+      risk: "read" | "act" | "confirm";
+    }
   | {
       type: "toolResult";
       streamId: string;
