@@ -145,10 +145,12 @@ mod imp {
             }
         };
 
-        let output = Command::new("osascript")
-            .args(["-e", full])
-            .output()
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        // 15s rather than 10: AppleScript against System Events can wait on
+        // the automation-permission prompt the first time, and killing the
+        // process under the user mid-prompt reads as a flaky feature.
+        let mut cmd = Command::new("osascript");
+        cmd.args(["-e", full]);
+        let output = crate::tools::run_with_timeout(cmd, std::time::Duration::from_secs(15))?;
 
         if output.status.success() {
             return Ok(());

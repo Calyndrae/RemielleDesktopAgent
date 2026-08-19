@@ -239,18 +239,27 @@ impl StreamRegistry {
 /// a question nobody answered.
 #[derive(Default)]
 pub struct ConfirmRegistry {
-    pending: Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>,
+    /// call_id → (stream that parked it, the sender its answer goes to).
+    ///
+    /// The stream id is what makes cancellation honest. The doc above always
+    /// promised "the sender is dropped if the panel closes or the stream is
+    /// cancelled" — but nothing implemented the second half, so closing the
+    /// panel during a confirmation left the stream task parked on a receiver
+    /// nobody could ever answer, holding its registry entry and history
+    /// forever. `abort_stream` is that missing half.
+    pending: Mutex<HashMap<String, (String, tokio::sync::oneshot::Sender<bool>)>>,
 }
 
 impl ConfirmRegistry {
-    fn park(&self, call_id: &str) -> tokio::sync::oneshot::Receiver<bool> {
+    fn park(&self, stream_id: &str, call_id: &str) -> tokio::sync::oneshot::Receiver<bool> {
         let (tx, rx) = tokio::sync::oneshot::channel();
-        self.lock().insert(call_id.to_string(), tx);
+        self.lock()
+            .insert(call_id.to_string(), (stream_id.to_string(), tx));
         rx
     }
 
     fn answer(&self, call_id: &str, approved: bool) {
-        if let Some(tx) = self.lock().remove(call_id) {
+        if let Some((_, tx)) = self.lock().remove(call_id) {
             let _ = tx.send(approved);
         }
     }
@@ -259,9 +268,18 @@ impl ConfirmRegistry {
         self.lock().remove(call_id);
     }
 
+    /// Drops every sender the given stream parked. Each dropped sender reads
+    /// as "no" on the other side, which unblocks the task so its own
+    /// cancellation check can run.
+    fn abort_stream(&self, stream_id: &str) {
+        self.lock().retain(|_, (owner, _)| owner != stream_id);
+    }
+
+    #[allow(clippy::type_complexity)]
     fn lock(
         &self,
-    ) -> std::sync::MutexGuard<'_, HashMap<String, tokio::sync::oneshot::Sender<bool>>> {
+    ) -> std::sync::MutexGuard<'_, HashMap<String, (String, tokio::sync::oneshot::Sender<bool>)>>
+    {
         self.pending.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -828,7 +846,7 @@ async fn await_confirmation<R: Runtime>(
     spec: &tools::ToolSpec,
 ) -> bool {
     let registry = app.state::<ConfirmRegistry>();
-    let receiver = registry.park(&call.id);
+    let receiver = registry.park(stream_id, &call.id);
 
     let detail = call
         .args()
@@ -1184,8 +1202,15 @@ pub async fn start_chat<R: Runtime>(
 }
 
 #[tauri::command]
-pub fn cancel_chat(registry: tauri::State<'_, StreamRegistry>, stream_id: String) {
+pub fn cancel_chat(
+    registry: tauri::State<'_, StreamRegistry>,
+    confirms: tauri::State<'_, ConfirmRegistry>,
+    stream_id: String,
+) {
     registry.cancel(&stream_id);
+    // A stream parked on a confirmation cannot see the cancel flag until the
+    // receiver resolves; dropping its sender resolves it as "no".
+    confirms.abort_stream(&stream_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -1959,6 +1984,30 @@ fn parse_route(decision: &str) -> SearchPlan {
 
 /// Runs the search and folds the results into the outgoing request.
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
+mod confirm_registry_tests {
+    use super::*;
+
+    /// The doc always promised a cancelled stream reads as "no"; this pins
+    /// the half of that promise that spent a while unimplemented.
+    #[tokio::test]
+    async fn cancelling_a_stream_resolves_its_parked_confirmations_as_no() {
+        let registry = ConfirmRegistry::default();
+        let mine = registry.park("stream_a", "call_1");
+        let also_mine = registry.park("stream_a", "call_2");
+        let someone_elses = registry.park("stream_b", "call_3");
+
+        registry.abort_stream("stream_a");
+
+        assert!(!mine.await.unwrap_or(false));
+        assert!(!also_mine.await.unwrap_or(false));
+
+        // The other stream's confirmation is untouched and still answerable.
+        registry.answer("call_3", true);
+        assert!(someone_elses.await.unwrap_or(false));
+    }
+}
+
 #[cfg(test)]
 mod app_effect_tests {
     use super::*;

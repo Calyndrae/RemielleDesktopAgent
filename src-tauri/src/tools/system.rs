@@ -84,11 +84,10 @@ pub fn set_system_theme(mode: &str) -> Result<ToolOutcome, ToolError> {
     const KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
 
     for name in ["AppsUseLightTheme", "SystemUsesLightTheme"] {
-        let status = Command::new("reg")
-            .args(["add", KEY, "/v", name, "/t", "REG_DWORD", "/d", value, "/f"])
-            .status()
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
-        if !status.success() {
+        let mut cmd = Command::new("reg");
+        cmd.args(["add", KEY, "/v", name, "/t", "REG_DWORD", "/d", value, "/f"]);
+        let output = crate::tools::run_with_timeout(cmd, std::time::Duration::from_secs(10))?;
+        if !output.status.success() {
             return Err(ToolError::Failed(format!("could not set {name}")));
         }
     }
@@ -102,15 +101,14 @@ pub fn set_system_theme(mode: &str) -> Result<ToolOutcome, ToolError> {
 #[cfg(target_os = "windows")]
 fn read_theme_is_light() -> Option<bool> {
     use std::process::Command;
-    let output = Command::new("reg")
-        .args([
-            "query",
-            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            "/v",
-            "AppsUseLightTheme",
-        ])
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("reg");
+    cmd.args([
+        "query",
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+        "/v",
+        "AppsUseLightTheme",
+    ]);
+    let output = crate::tools::run_with_timeout(cmd, std::time::Duration::from_secs(10)).ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     // `reg query` prints the value as hex: 0x1 light, 0x0 dark.
     Some(text.contains("0x1"))
@@ -133,7 +131,12 @@ pub fn security_scan(scope: &str) -> Result<ToolOutcome, ToolError> {
         }
     };
 
-    let status = Command::new("powershell")
+    // Started, not awaited. This used to `.status()` — which for a full scan
+    // parks a runtime thread for *hours* with the Stop button doing nothing,
+    // because the description itself says how long a full scan takes. The
+    // honest contract is "the scan is running now": Defender continues on its
+    // own, and the transcript says exactly that much.
+    Command::new("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -144,18 +147,16 @@ pub fn security_scan(scope: &str) -> Result<ToolOutcome, ToolError> {
                 _ => "Start-MpScan -ScanType FullScan",
             },
         ])
-        .status()
-        .map_err(|e| ToolError::Failed(e.to_string()))?;
-
-    if !status.success() {
-        return Err(ToolError::Failed(
-            "Defender 扫描没有启动成功，可能是被组策略禁用或用了第三方杀毒".into(),
-        ));
-    }
+        .spawn()
+        .map_err(|_| {
+            ToolError::Failed(
+                "Defender 扫描没有启动成功，可能是被组策略禁用或用了第三方杀毒".into(),
+            )
+        })?;
 
     Ok(ToolOutcome {
-        result: format!("defender {scan_type} completed"),
-        summary: format!("跑完了一次 Defender {label}扫描"),
+        result: format!("defender {scan_type} started; it continues in the background"),
+        summary: format!("开始了一次 Defender {label}扫描，会在后台自己跑完"),
     })
 }
 
@@ -222,10 +223,9 @@ pub fn set_system_theme(mode: &str) -> Result<ToolOutcome, ToolError> {
         }
     };
 
-    let output = Command::new("osascript")
-        .args(["-e", script])
-        .output()
-        .map_err(|e| ToolError::Failed(e.to_string()))?;
+    let mut cmd = Command::new("osascript");
+    cmd.args(["-e", script]);
+    let output = crate::tools::run_with_timeout(cmd, std::time::Duration::from_secs(10))?;
 
     if !output.status.success() {
         // Almost always the automation permission prompt having been declined,
@@ -253,10 +253,9 @@ pub fn active_window() -> Result<ToolOutcome, ToolError> {
     const SCRIPT: &str = "tell application \"System Events\" to get name of first \
                           application process whose frontmost is true";
 
-    let output = Command::new("osascript")
-        .args(["-e", SCRIPT])
-        .output()
-        .map_err(|e| ToolError::Failed(e.to_string()))?;
+    let mut cmd = Command::new("osascript");
+    cmd.args(["-e", SCRIPT]);
+    let output = crate::tools::run_with_timeout(cmd, std::time::Duration::from_secs(10))?;
 
     let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if !output.status.success() || name.is_empty() {

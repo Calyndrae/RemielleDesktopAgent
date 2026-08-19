@@ -139,6 +139,55 @@ pub struct ToolSpec {
     pub params: &'static [Param],
 }
 
+/// Runs a subprocess with a deadline, killing it when the deadline passes.
+///
+/// Every tool that shells out goes through here. Nothing in the tree used to
+/// carry a timeout, which meant an AppleScript against an unresponsive app
+/// parked a tokio worker forever with the Stop button inert — the panel
+/// showed a running tool with no way out.
+///
+/// Dependency-free on purpose: std has no built-in wait-with-deadline, and a
+/// crate for one poll loop is not worth what it costs the offline build. The
+/// 25ms poll is invisible next to process spawn time. Output is piped, which
+/// caps what a child can write before blocking at the OS pipe buffer — fine
+/// for every current caller, whose outputs are a line or two; a future tool
+/// that streams megabytes needs a draining reader, not this.
+pub(crate) fn run_with_timeout(
+    mut cmd: std::process::Command,
+    timeout: std::time::Duration,
+) -> Result<std::process::Output, ToolError> {
+    use std::process::Stdio;
+
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| ToolError::Failed(e.to_string()))?;
+
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                return child
+                    .wait_with_output()
+                    .map_err(|e| ToolError::Failed(e.to_string()));
+            }
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(ToolError::Failed(format!(
+                        "没有在 {} 秒内回应，已经停止等待",
+                        timeout.as_secs()
+                    )));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(e) => return Err(ToolError::Failed(e.to_string())),
+        }
+    }
+}
+
 pub const CATALOG: &[ToolSpec] = &[
     ToolSpec {
         name: "get_system_info",
