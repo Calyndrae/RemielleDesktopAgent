@@ -221,9 +221,7 @@ pub fn spawn_poller<R: Runtime>(app: AppHandle<R>) {
              * arrives on human timescales, and half a second is short enough
              * that she reappears as part of the same glance.
              */
-            if ticks % TOPMOST_REASSERT_EVERY == 0
-                && app.state::<overlay::StayOnTop>().wanted()
-            {
+            if ticks % TOPMOST_REASSERT_EVERY == 0 && app.state::<overlay::StayOnTop>().wanted() {
                 platform::keep_above_fullscreen(&window);
             }
 

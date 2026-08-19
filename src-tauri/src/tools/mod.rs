@@ -764,21 +764,27 @@ mod tests {
                     name: "mode",
                     description: "",
                     required: true,
-                    kind: ParamKind::Enum { values: &["a", "b"] },
+                    kind: ParamKind::Enum {
+                        values: &["a", "b"],
+                    },
                 },
                 Param {
                     name: "extra",
                     description: "",
                     required: false,
-                    kind: ParamKind::Enum { values: &["x", "y"] },
+                    kind: ParamKind::Enum {
+                        values: &["x", "y"],
+                    },
                 },
             ],
         };
         assert!(validate_call(&SPEC, &args(serde_json::json!({"mode": "a"})), &[]).is_ok());
-        assert!(
-            validate_call(&SPEC, &args(serde_json::json!({"mode": "a", "extra": "x"})), &[])
-                .is_ok()
-        );
+        assert!(validate_call(
+            &SPEC,
+            &args(serde_json::json!({"mode": "a", "extra": "x"})),
+            &[]
+        )
+        .is_ok());
     }
 
     #[test]

@@ -1052,8 +1052,7 @@ async fn run_stream<R: Runtime>(
                     }
                 }
                 _ => {
-                    let mut outcome =
-                        tools::dispatch::dispatch(call, &request.tools, &app_labels);
+                    let mut outcome = tools::dispatch::dispatch(call, &request.tools, &app_labels);
                     apply_app_effects(&app, call, &request.app_allowlist, &mut outcome);
                     outcome
                 }
@@ -2040,7 +2039,10 @@ mod app_effect_tests {
 
         apply_app_effects(app.handle(), &call, &[], &mut outcome);
 
-        assert!(!outcome.ok, "no window, yet the outcome still claims success");
+        assert!(
+            !outcome.ok,
+            "no window, yet the outcome still claims success"
+        );
         assert!(
             outcome.result.contains("did not take effect"),
             "the model must be told the truth: {}",
@@ -2072,8 +2074,15 @@ mod app_effect_tests {
 
         apply_app_effects(app.handle(), &call, &[], &mut outcome);
 
-        assert!(!outcome.ok, "nothing was launched, yet the outcome claims success");
-        assert!(outcome.result.contains("did not open"), "{}", outcome.result);
+        assert!(
+            !outcome.ok,
+            "nothing was launched, yet the outcome claims success"
+        );
+        assert!(
+            outcome.result.contains("did not open"),
+            "{}",
+            outcome.result
+        );
     }
 
     /// Other tools pass through untouched — the effects layer is for the two
@@ -2137,8 +2146,8 @@ fn apply_app_effects<R: Runtime>(
 
         // The path being handed to the opener came from the OS file picker,
         // stored at pick time — the model only ever chose the label above.
-        if let Err(error) = tauri_plugin_opener::OpenerExt::opener(app)
-            .open_path(entry.path.clone(), None::<&str>)
+        if let Err(error) =
+            tauri_plugin_opener::OpenerExt::opener(app).open_path(entry.path.clone(), None::<&str>)
         {
             outcome.ok = false;
             outcome.result = format!(
@@ -2159,7 +2168,11 @@ fn apply_app_effects<R: Runtime>(
     let on = call
         .args()
         .ok()
-        .and_then(|args| args.get("mode").and_then(|v| v.as_str()).map(|m| m == "stay"))
+        .and_then(|args| {
+            args.get("mode")
+                .and_then(|v| v.as_str())
+                .map(|m| m == "stay")
+        })
         .unwrap_or(true);
 
     let Some(window) = app.get_webview_window(crate::window::OVERLAY_LABEL) else {

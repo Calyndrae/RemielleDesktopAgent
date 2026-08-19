@@ -31,7 +31,9 @@ pub async fn pick_app<R: Runtime>(app: AppHandle<R>) -> Result<Option<PickedApp>
         // picker steers toward the right thing without forbidding a user who
         // knows better (macOS .app bundles present as files in NSOpenPanel).
         #[cfg(target_os = "macos")]
-        let dialog = dialog.add_filter("应用程序", &["app"]).set_directory("/Applications");
+        let dialog = dialog
+            .add_filter("应用程序", &["app"])
+            .set_directory("/Applications");
         #[cfg(target_os = "windows")]
         let dialog = dialog.add_filter("程序", &["exe"]);
 
@@ -43,9 +45,7 @@ pub async fn pick_app<R: Runtime>(app: AppHandle<R>) -> Result<Option<PickedApp>
     let Some(path) = picked else {
         return Ok(None);
     };
-    let path = path
-        .into_path()
-        .map_err(|e| e.to_string())?;
+    let path = path.into_path().map_err(|e| e.to_string())?;
 
     // "Safari.app" -> "Safari"; "notepad.exe" -> "notepad". The label is what
     // the model sees and what the transcript says she opened.
