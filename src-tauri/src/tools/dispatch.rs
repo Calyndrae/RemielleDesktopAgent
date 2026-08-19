@@ -138,14 +138,17 @@ pub fn dispatch(call: &ToolCall, enabled: &[String], allowlist: &[String]) -> Di
         "security_scan" => system::security_scan(text("scope")),
         "media_control" => media::media_control(text("action")),
         "arrange_window" => window::arrange_window(text("action")),
-        // Both are handled by the app rather than a system call: they change
-        // this window, or launch from the user's own allowlist.
+        // Acts on this very window, so the real effect is applied by
+        // `llm::apply_app_effects`, where the AppHandle lives — dispatch stays
+        // a pure executor its tests can run without a Tauri runtime. The
+        // strings here describe success; the effects layer downgrades them if
+        // the window refuses. (For a while nothing applied anything and this
+        // arm simply lied. The guard test for that lives in llm::tests.)
         "set_stay_on_top" => Ok(ToolOutcome {
             result: format!("stay_on_top set to {}", text("mode")),
             summary: match text("mode") {
                 "stay" => "以后会一直浮在最上面".into(),
-                "hide" => "全屏应用打开时会自己让开".into(),
-                _ => "以后每次都会先问你".into(),
+                _ => "全屏应用打开时会自己让开".into(),
             },
         }),
         "open_app" => Ok(ToolOutcome {

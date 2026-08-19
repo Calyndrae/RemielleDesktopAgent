@@ -112,6 +112,24 @@ export function App() {
     });
   }, [alwaysOnTop]);
 
+  // Her own `set_stay_on_top` tool applies the level in Rust, where failure
+  // can still be reported truthfully in the transcript. This listener is the
+  // other half: folding the new value into the store so the settings
+  // checkbox, the right-click menu and the persisted preference all agree
+  // with what the window is now doing.
+  useEffect(() => {
+    let cancelled = false;
+    const pending = listen<boolean>("overlay://stay-on-top", ({ payload }) => {
+      useSpriteStore.getState().setAlwaysOnTop(payload);
+    });
+    return () => {
+      void pending.then((unlisten) => {
+        if (!cancelled) unlisten();
+        cancelled = true;
+      });
+    };
+  }, []);
+
   // Moving to a display with a different DPI changes the logical size of the
   // work area, so the overlay has to be re-placed and re-measured.
   useEffect(() => {

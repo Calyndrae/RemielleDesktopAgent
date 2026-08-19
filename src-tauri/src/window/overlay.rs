@@ -5,6 +5,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use serde::Serialize;
 use tauri::{Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
 
+/// Event announcing that the stay-on-top setting changed from the Rust side
+/// (today: her own `set_stay_on_top` tool). The overlay webview listens and
+/// folds the new value into its store, so the checkbox in settings, the
+/// right-click menu and her own belief all agree about what just happened.
+pub const STAY_ON_TOP_EVENT: &str = "overlay://stay-on-top";
+
 /// Whether the user asked her to stay above everything.
 ///
 /// Recorded because holding that position on Windows takes repetition, not a

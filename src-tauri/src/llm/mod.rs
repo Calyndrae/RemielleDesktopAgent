@@ -938,6 +938,33 @@ async fn run_stream<R: Runtime>(
         .await?;
 
         if outcome.calls.is_empty() {
+            /*
+             * A round can end "cleanly" with nothing in it: the terminator is
+             * present, there are no calls, and there are also no words. On
+             * reasoning models this is the token budget spent entirely on
+             * thinking (finish_reason: length, empty content) — the same
+             * signature that silently killed the search router at 60 tokens
+             * and the greeting at 120. Content filters produce the same shape
+             * with their own finish_reason. Without this check the panel
+             * renders a blank assistant turn and nothing anywhere says why.
+             */
+            if outcome.text.trim().is_empty() {
+                let reason = outcome
+                    .finish_reason
+                    .as_deref()
+                    .unwrap_or("unknown")
+                    .to_string();
+                log::warn!(
+                    "{} {}: round ended with finish_reason={reason}, zero content                      and no calls — the reasoning-burn signature",
+                    info.id,
+                    request.model,
+                );
+                return Err(ApiError::Malformed {
+                    message: format!(
+                        "她想了半天，一个字也没说出来（{reason}）/ the model finished                          without saying anything — usually the token budget went to                          reasoning ({reason})"
+                    ),
+                });
+            }
             return Ok(());
         }
 
@@ -983,7 +1010,12 @@ async fn run_stream<R: Runtime>(
                         ok: false,
                     }
                 }
-                _ => tools::dispatch::dispatch(call, &request.tools, &request.app_allowlist),
+                _ => {
+                    let mut outcome =
+                        tools::dispatch::dispatch(call, &request.tools, &request.app_allowlist);
+                    apply_app_effects(&app, call, &mut outcome);
+                    outcome
+                }
             };
 
             let _ = app.emit(
@@ -1829,7 +1861,15 @@ async fn route_search(
         "max_tokens": 400,
     });
 
-    let mut builder = http.post(format!("{base}/chat/completions")).json(&body);
+    // The shared client is tuned for streams: 20s connect, 90s between
+    // reads. Inherited by this blocking ten-token call, that is a worst case
+    // of nearly two silent minutes before the user's real request even goes
+    // out. The router earns a total budget instead: if the decision has not
+    // arrived in 15s, not searching is the better answer.
+    let mut builder = http
+        .post(format!("{base}/chat/completions"))
+        .timeout(std::time::Duration::from_secs(15))
+        .json(&body);
     if let Some(key) = key {
         builder = builder.bearer_auth(key);
     }
@@ -1895,6 +1935,122 @@ fn parse_route(decision: &str) -> SearchPlan {
 }
 
 /// Runs the search and folds the results into the outgoing request.
+#[allow(clippy::too_many_arguments)]
+#[cfg(test)]
+mod app_effect_tests {
+    use super::*;
+
+    fn stay_call() -> toolcall::ToolCall {
+        toolcall::ToolCall {
+            id: "call_1".into(),
+            name: "set_stay_on_top".into(),
+            arguments: Ok(serde_json::json!({"mode": "stay"})
+                .as_object()
+                .cloned()
+                .expect("object")),
+        }
+    }
+
+    /// The regression this whole layer exists for: with no overlay window to
+    /// act on, the outcome must stop claiming success. For a while it did not
+    /// — the tool reported 「以后会一直浮在最上面」 while nothing moved.
+    #[test]
+    fn a_stay_on_top_effect_that_cannot_land_downgrades_the_outcome() {
+        let app = tauri::test::mock_app();
+        let call = stay_call();
+        let mut outcome = tools::dispatch::DispatchOutcome {
+            call_id: "call_1".into(),
+            tool: "set_stay_on_top".into(),
+            result: "stay_on_top set to stay".into(),
+            summary: "以后会一直浮在最上面".into(),
+            ok: true,
+        };
+
+        apply_app_effects(app.handle(), &call, &mut outcome);
+
+        assert!(!outcome.ok, "no window, yet the outcome still claims success");
+        assert!(
+            outcome.result.contains("did not take effect"),
+            "the model must be told the truth: {}",
+            outcome.result
+        );
+    }
+
+    /// Other tools pass through untouched — the effects layer is for the two
+    /// that act on the app, not a second dispatch.
+    #[test]
+    fn unrelated_outcomes_are_left_alone() {
+        let app = tauri::test::mock_app();
+        let call = stay_call();
+        let mut outcome = tools::dispatch::DispatchOutcome {
+            call_id: "call_1".into(),
+            tool: "media_control".into(),
+            result: "media_key=play_pause sent".into(),
+            summary: "按下了播放键".into(),
+            ok: true,
+        };
+        apply_app_effects(app.handle(), &call, &mut outcome);
+        assert!(outcome.ok);
+    }
+}
+
+/// Applies the side effects of tools whose target is the app itself.
+///
+/// `dispatch` is a pure catalog executor with no Tauri handle, on purpose —
+/// its tests run without a runtime, and seven of the eight tools talk to the
+/// OS rather than to this process. `set_stay_on_top` is the exception: its
+/// target is this very window, so its effect is applied here, where the
+/// `AppHandle` lives, immediately after dispatch produced the success
+/// strings. A failed effect downgrades the outcome, because for a while this
+/// tool reported 「以后会一直浮在最上面」 while nothing anywhere moved the
+/// window — and a transcript that narrates changes that did not happen is
+/// the exact failure the whole catalog design exists to prevent.
+fn apply_app_effects<R: Runtime>(
+    app: &AppHandle<R>,
+    call: &toolcall::ToolCall,
+    outcome: &mut tools::dispatch::DispatchOutcome,
+) {
+    if !outcome.ok || outcome.tool != "set_stay_on_top" {
+        return;
+    }
+
+    // Validation already accepted the call, so `mode` is present and is one
+    // of the two enum values; anything else would have been refused upstream.
+    let on = call
+        .args()
+        .ok()
+        .and_then(|args| args.get("mode").and_then(|v| v.as_str()).map(|m| m == "stay"))
+        .unwrap_or(true);
+
+    let Some(window) = app.get_webview_window(crate::window::OVERLAY_LABEL) else {
+        outcome.ok = false;
+        outcome.result = "'set_stay_on_top' could not run: the overlay window was not \
+                          found. Tell the user it did not take effect."
+            .into();
+        outcome.summary = "没找到自己的窗口，这次没改成".into();
+        return;
+    };
+
+    if let Err(error) = crate::window::overlay::set_overlay_on_top(window, on) {
+        outcome.ok = false;
+        outcome.result = format!(
+            "'set_stay_on_top' ran but the window refused the change: {error}. \
+             Tell the user it did not take effect."
+        );
+        outcome.summary = "窗口没接受这个设置，这次没改成".into();
+        return;
+    }
+
+    // The native window is already right; this keeps the stores honest. The
+    // overlay folds it into its state, which the settings window mirrors, so
+    // no checkbox is left claiming the old value.
+    let _ = app.emit(crate::window::overlay::STAY_ON_TOP_EVENT, on);
+}
+
+// Eight arguments is over clippy's line, and it is right in general — but
+// these are one request's worth of context threaded through a private helper
+// with two call sites, and a struct invented to appease the count would have
+// exactly these fields and no name that means anything.
 #[allow(clippy::too_many_arguments)]
 async fn preflight_search<R: Runtime>(
     app: &AppHandle<R>,

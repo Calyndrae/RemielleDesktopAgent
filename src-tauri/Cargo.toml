@@ -124,3 +124,9 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+[dev-dependencies]
+# The mock runtime exists for exactly one kind of test here: proving that a
+# tool whose target is the app itself tells the truth when the app cannot
+# comply. Everything else tests fine without a runtime.
+tauri = { version = "2", features = ["test"] }

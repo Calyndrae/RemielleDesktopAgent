@@ -191,26 +191,20 @@ pub const CATALOG: &[ToolSpec] = &[
         risk: Risk::Act,
         group: Group::Herself,
         platform: Platform::Any,
-        params: &[
-            Param {
-                name: "mode",
-                description: "stay = remain above fullscreen apps; hide = get \
-                              out of the way; ask = prompt each time.",
-                required: true,
-                kind: ParamKind::Enum {
-                    values: &["stay", "hide", "ask"],
-                },
+        // This spec once advertised an `ask` mode and a per-application
+        // `scope` that nothing implemented — the tool reported success and
+        // the window never moved. The enum now promises exactly what the
+        // window layer can deliver; the per-app rule is future work and gets
+        // added here when it exists, not before.
+        params: &[Param {
+            name: "mode",
+            description: "stay = remain above fullscreen apps; hide = get \
+                          out of the way of them.",
+            required: true,
+            kind: ParamKind::Enum {
+                values: &["stay", "hide"],
             },
-            Param {
-                name: "scope",
-                description: "current_app applies the rule only to the \
-                              foreground application; global changes the default.",
-                required: false,
-                kind: ParamKind::Enum {
-                    values: &["current_app", "global"],
-                },
-            },
-        ],
+        }],
     },
     ToolSpec {
         name: "security_scan",
@@ -703,8 +697,36 @@ mod tests {
 
     #[test]
     fn optional_parameters_may_be_omitted() {
-        let stay = find("set_stay_on_top").unwrap();
-        assert!(validate_call(stay, &args(serde_json::json!({"mode": "hide"})), &[]).is_ok());
+        // No shipped tool has an optional parameter since set_stay_on_top
+        // lost its unimplemented `scope`; the branch is pinned with a
+        // synthetic spec so it cannot rot before one returns.
+        static SPEC: ToolSpec = ToolSpec {
+            name: "test_optional",
+            description: "",
+            user_label: "",
+            risk: Risk::Act,
+            platform: Platform::Any,
+            group: Group::System,
+            params: &[
+                Param {
+                    name: "mode",
+                    description: "",
+                    required: true,
+                    kind: ParamKind::Enum { values: &["a", "b"] },
+                },
+                Param {
+                    name: "extra",
+                    description: "",
+                    required: false,
+                    kind: ParamKind::Enum { values: &["x", "y"] },
+                },
+            ],
+        };
+        assert!(validate_call(&SPEC, &args(serde_json::json!({"mode": "a"})), &[]).is_ok());
+        assert!(
+            validate_call(&SPEC, &args(serde_json::json!({"mode": "a", "extra": "x"})), &[])
+                .is_ok()
+        );
     }
 
     #[test]
