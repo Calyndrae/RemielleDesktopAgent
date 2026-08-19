@@ -102,6 +102,7 @@ pub fn run() {
             window::overlay::refresh_overlay_geometry,
             window::overlay::recentre_overlay,
             window::overlay::set_overlay_on_top,
+            window::shortcut::set_summon_shortcut,
             window::tray::set_tray_labels,
             window::tray::hide_overlay,
             window::passthrough::set_hit_regions,

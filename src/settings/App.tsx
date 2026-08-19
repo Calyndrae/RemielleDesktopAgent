@@ -46,6 +46,29 @@ import {
  * Rust catalog adds under an unknown group simply will not render, which is
  * the safe direction to fail: a switch nobody can see grants nothing.
  */
+/**
+ * A Tauri accelerator from a keydown, or null while only modifiers are down.
+ *
+ * Meta becomes CmdOrCtrl so a combination recorded on one platform still
+ * means "the primary modifier" if the store ever travels. A combination
+ * without any modifier is refused: a global bare-letter hotkey would eat
+ * that letter from every application.
+ */
+function comboFrom(event: React.KeyboardEvent): string | null {
+  const mods: string[] = [];
+  if (event.metaKey) mods.push("CmdOrCtrl");
+  if (event.ctrlKey && !event.metaKey) mods.push(mods.length ? "Ctrl" : "CmdOrCtrl");
+  if (event.altKey) mods.push("Alt");
+  if (event.shiftKey) mods.push("Shift");
+  if (mods.length === 0) return null;
+
+  const key = event.key;
+  if (["Meta", "Control", "Alt", "Shift"].includes(key)) return null;
+  const name =
+    key.length === 1 ? key.toUpperCase() : key === " " ? "Space" : key;
+  return [...mods, name].join("+");
+}
+
 const TOOL_GROUPS: ReadonlyArray<[ToolSpec["group"], string]> = [
   ["herself", "她自己"],
   ["system", "这台电脑"],
@@ -76,6 +99,8 @@ export function SettingsApp() {
    * whichever reply happened to land last rather than what the OS settled on.
    */
   const [autostart, setAutostartState] = useState(false);
+  const [capturingShortcut, setCapturingShortcut] = useState(false);
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
 
   /*
@@ -754,6 +779,56 @@ export function SettingsApp() {
           <span className="field__hint">
             打游戏时想让她让开，可以在这里关掉，或者直接跟她说一声 ——
             前提是下面「改变自己是否浮在全屏应用之上」开着。
+          </span>
+        </div>
+
+        <div className="field">
+          <span className="field__label">一键叫她出来</span>
+          <div className="shortcutrow">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setCapturingShortcut(true)}
+              onKeyDown={(event) => {
+                if (!capturingShortcut) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const combo = comboFrom(event);
+                if (!combo) return; // a bare modifier — keep listening
+                setCapturingShortcut(false);
+                void ipc
+                  .setSummonShortcut(combo)
+                  .then(() => {
+                    useSpriteStore.getState().setSummonShortcut(combo);
+                    setShortcutError(null);
+                  })
+                  .catch((cause) => setShortcutError(String(cause)));
+              }}
+              onBlur={() => setCapturingShortcut(false)}
+            >
+              {capturingShortcut
+                ? "按下你想用的组合…"
+                : (sprite.summonShortcut ?? "录一个快捷键")}
+            </button>
+            {sprite.summonShortcut && !capturingShortcut && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  void ipc.setSummonShortcut(null).then(() => {
+                    useSpriteStore.getState().setSummonShortcut(null);
+                    setShortcutError(null);
+                  });
+                }}
+              >
+                清除
+              </button>
+            )}
+          </div>
+          <span className="field__hint">
+            {shortcutError
+              ? `这个组合注册不上（可能被别的程序占了）：${shortcutError}`
+              : "在任何应用里按这个组合，她都会现身并打开聊天框。需要带修饰键，比如 Ctrl+Shift+R。"}
           </span>
         </div>
 

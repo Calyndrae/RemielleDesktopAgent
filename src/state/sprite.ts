@@ -18,6 +18,8 @@ interface PersistedPlacement {
   pinned: boolean;
   alwaysOnTop: boolean;
   monitor: string | null;
+  /** Tauri accelerator string that summons her, or null for none. */
+  summonShortcut: string | null;
 }
 
 const DEFAULTS: PersistedPlacement = {
@@ -28,6 +30,7 @@ const DEFAULTS: PersistedPlacement = {
   pinned: false,
   alwaysOnTop: true,
   monitor: null,
+  summonShortcut: null,
 };
 
 const STORAGE_KEY = "sprite.placement";
@@ -41,6 +44,7 @@ interface SpriteStore extends PersistedPlacement {
   nudgeScale: (delta: number) => void;
   setPinned: (pinned: boolean) => void;
   setAlwaysOnTop: (value: boolean) => void;
+  setSummonShortcut: (value: string | null) => void;
   setMonitor: (monitor: string | null) => void;
   /**
    * Puts her back where she started, for the tray's "come back on screen".
@@ -63,6 +67,7 @@ function persist(state: SpriteStore): void {
     pinned: state.pinned,
     alwaysOnTop: state.alwaysOnTop,
     monitor: state.monitor,
+    summonShortcut: state.summonShortcut,
   };
   void writeSetting(STORAGE_KEY, placement);
 }
@@ -82,6 +87,7 @@ export const useSpriteStore = create<SpriteStore>((set, get) => ({
       pinned: stored.pinned ?? DEFAULTS.pinned,
       alwaysOnTop: stored.alwaysOnTop ?? DEFAULTS.alwaysOnTop,
       monitor: stored.monitor ?? DEFAULTS.monitor,
+      summonShortcut: stored.summonShortcut ?? DEFAULTS.summonShortcut,
       hydrated: true,
     });
   },
@@ -108,6 +114,11 @@ export const useSpriteStore = create<SpriteStore>((set, get) => ({
 
   setAlwaysOnTop: (alwaysOnTop) => {
     set({ alwaysOnTop });
+    persist(get());
+  },
+
+  setSummonShortcut: (summonShortcut) => {
+    set({ summonShortcut });
     persist(get());
   },
 

@@ -112,6 +112,29 @@ export function App() {
     });
   }, [alwaysOnTop]);
 
+  // The summon shortcut is registered in Rust and survives the webview, but
+  // the chosen combination lives with the other sprite preferences — so the
+  // overlay re-applies it once the store has hydrated, and opens the panel
+  // when it fires: she is summoned to talk, not just to stand there.
+  useEffect(() => {
+    const stored = useSpriteStore.getState().summonShortcut;
+    if (stored) {
+      void ipc.setSummonShortcut(stored).catch(() => {
+        /* Combination taken since last run; settings shows the state. */
+      });
+    }
+    let cancelled = false;
+    const pending = listen("overlay://summon", () => {
+      useChatStore.getState().openPanel();
+    });
+    return () => {
+      void pending.then((unlisten) => {
+        if (!cancelled) unlisten();
+        cancelled = true;
+      });
+    };
+  }, []);
+
   // Her own `set_stay_on_top` tool applies the level in Rust, where failure
   // can still be reported truthfully in the transcript. This listener is the
   // other half: folding the new value into the store so the settings

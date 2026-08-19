@@ -456,3 +456,11 @@ body {
 .applist__remove {
   flex: none;
 }
+
+/* The shortcut recorder: the combination reads as the button's own label,
+   so recording, reading and clearing all happen in one place. */
+.shortcutrow {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}

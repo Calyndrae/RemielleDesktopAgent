@@ -62,6 +62,9 @@ export const ipc = {
    * that Tauri does not expose, so both halves live in Rust together.
    */
   setOverlayOnTop: (on: boolean) => invoke<void>("set_overlay_on_top", { on }),
+  /** Registers (or clears, with null) the global summon shortcut. */
+  setSummonShortcut: (shortcut: string | null) =>
+    invoke<void>("set_summon_shortcut", { shortcut }),
 
   /**
    * Replaces the tray menu's strings once the locale is known.
