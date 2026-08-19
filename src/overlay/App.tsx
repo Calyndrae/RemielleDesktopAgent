@@ -113,6 +113,23 @@ export function App() {
     });
   }, [alwaysOnTop]);
 
+  // One update check per launch, after the stores have hydrated so the
+  // setting is respected. Fire-and-forget: a failed check is a log line, not
+  // a dialog — the user opened her to talk, not to hear about networking.
+  useEffect(() => {
+    if (!useConfigStore.getState().autoUpdate) return;
+    void ipc
+      .checkForUpdate(true)
+      .then((outcome) => {
+        if (outcome.state === "installed") {
+          void ipc.frontendNote(`updater: installed v${outcome.version}`);
+        }
+      })
+      .catch((cause) => {
+        void ipc.frontendNote(`updater: check failed: ${String(cause)}`);
+      });
+  }, []);
+
   // The summon shortcut is registered in Rust and survives the webview, but
   // the chosen combination lives with the other sprite preferences — so the
   // overlay re-applies it once the store has hydrated, and opens the panel

@@ -75,6 +75,12 @@ export interface AiConfig {
   /** Palette for the floating panel. `auto` follows the OS. */
   panelTheme: PanelTheme;
   /**
+   * Check GitHub for a newer release at every launch and install it quietly.
+   * On: one HTTPS request to github.com per launch carrying nothing but the
+   * download itself. The only interruption is an offer to restart.
+   */
+  autoUpdate: boolean;
+  /**
    * UI language. `auto` follows the OS locale, the explicit values pin it.
    *
    * This governs the app's own chrome — settings, menus, hints, buttons.
@@ -116,6 +122,7 @@ const DEFAULTS: AiConfig = {
   tools: ["get_system_info"],
   panelTheme: "auto",
   language: "auto",
+  autoUpdate: true,
   appAllowlist: [],
   searchEngineId: "",
   profile: EMPTY_PROFILE,
@@ -164,6 +171,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         stored.language === "zh-CN" || stored.language === "en"
           ? stored.language
           : DEFAULTS.language,
+      autoUpdate: stored.autoUpdate ?? DEFAULTS.autoUpdate,
       // Entries are {label, path} pairs from the file picker. Anything else —
       // including the bare strings an early version stored, which never
       // launched anything — is dropped rather than half-migrated.
@@ -238,6 +246,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       appAllowlist,
       panelTheme,
       language,
+      autoUpdate,
       searchEngineId,
       profile,
     } = get();
@@ -253,6 +262,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       appAllowlist,
       panelTheme,
       language,
+      autoUpdate,
       searchEngineId,
       profile,
     });

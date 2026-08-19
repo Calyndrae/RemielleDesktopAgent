@@ -6,6 +6,7 @@ mod search;
 mod secrets;
 pub mod tools;
 mod uninstall;
+mod update;
 mod window;
 
 use tauri::{AppHandle, Manager, Runtime};
@@ -53,6 +54,7 @@ pub fn run() {
                 }
             }))
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+            .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 Some(vec!["--autostart"]),
@@ -128,6 +130,7 @@ pub fn run() {
             llm::list_models,
             llm::ambient_line,
             search::verify_search,
+            update::check_for_update,
             uninstall::uninstall_app,
             quit_app,
             frontend_note,

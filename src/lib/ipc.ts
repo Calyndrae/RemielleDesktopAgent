@@ -70,6 +70,12 @@ export const ipc = {
    * Deliberately a command and not a catalog tool: no model can reach it.
    */
   uninstallApp: () => invoke<void>("uninstall_app"),
+  /** Checks GitHub, installs any newer release, returns what happened. */
+  checkForUpdate: (promptRestart: boolean) =>
+    invoke<{ state: "current" | "installed"; version: string }>(
+      "check_for_update",
+      { promptRestart },
+    ),
 
   /**
    * Replaces the tray menu's strings once the locale is known.

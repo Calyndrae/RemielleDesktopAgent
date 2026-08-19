@@ -109,6 +109,8 @@ export function SettingsApp() {
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
   const [uninstallError, setUninstallError] = useState<string | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateResult, setUpdateResult] = useState<string | null>(null);
   const [autostartBusy, setAutostartBusy] = useState(false);
 
   /*
@@ -1183,6 +1185,51 @@ export function SettingsApp() {
             下次打开聊天时可以一键接着聊。只保留最近一次，不会攒成档案。
             关掉这个开关会同时删掉已经存下的那一份。
           </span>
+        </div>
+      </section>
+
+      <section className="group">
+        <h2 className="group__title">保持最新</h2>
+        <div className="field">
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={config.autoUpdate}
+              onChange={(event) =>
+                useConfigStore.getState().patch({ autoUpdate: event.target.checked })
+              }
+            />
+            <span>每次打开时自动更新</span>
+          </label>
+          <span className="field__hint">
+            开着的时候，每次启动会向 GitHub 问一次有没有新版本，装好后问你要不要重启。
+            除了下载本身，什么都不会发出去。
+          </span>
+        </div>
+        <div className="field">
+          <button
+            type="button"
+            className="btn"
+            disabled={updateChecking}
+            onClick={() => {
+              setUpdateChecking(true);
+              setUpdateResult(null);
+              void ipc
+                .checkForUpdate(false)
+                .then((outcome) => {
+                  setUpdateResult(
+                    outcome.state === "installed"
+                      ? `v${outcome.version} 已装好，重启后生效`
+                      : `已经是最新（v${outcome.version}）`,
+                  );
+                })
+                .catch((cause) => setUpdateResult(`没查成：${String(cause)}`))
+                .finally(() => setUpdateChecking(false));
+            }}
+          >
+            {updateChecking ? "正在查…" : "现在检查"}
+          </button>
+          {updateResult && <span className="field__hint">{updateResult}</span>}
         </div>
       </section>
 

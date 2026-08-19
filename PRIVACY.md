@@ -45,3 +45,12 @@ Nothing survives elsewhere, because nothing was sent elsewhere.
 
 Questions or concerns: open an issue at
 <https://github.com/Calyndrae/RemielleDesktopAgent/issues>.
+
+
+## Automatic updates
+
+When 自动更新 is on (the default), the app asks GitHub once per launch
+whether a newer release exists, and downloads it if so. That request carries
+no account, no identifier and no telemetry — it is the same anonymous HTTPS
+request a browser makes opening the releases page. It can be switched off in
+设置 → 保持最新, after which the app contacts GitHub never.
