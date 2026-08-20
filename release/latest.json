@@ -1,0 +1,19 @@
+{
+  "version": "0.1.4",
+  "notes": "\u81ea\u52a8\u66f4\u65b0\u4ece\u8fd9\u4e2a\u7248\u672c\u5f00\u59cb\u3002 Auto-updates begin with this release.",
+  "pub_date": "2026-08-20T00:03:37Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "url": "https://github.com/Calyndrae/RemielleDesktopAgent/releases/download/v0.1.4/Remielle.Desktop.Agent_0.1.4_aarch64.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRYzU0dGp0bk85VDZSUnN5OHNDbG04YVV1WS9tMlZ6R20vMnpJaXBpZTFXdEhnOFJscXdSS2tGd0J5TE11RkZQd3JrcTYrN0xGVVBXaUtrZm1WdXlzZkwzY3BKemUwUmdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTc3NDIzCWZpbGU6UmVtaWVsbGUgRGVza3RvcCBBZ2VudF8wLjEuNF9hYXJjaDY0LmFwcC50YXIuZ3oKRFlFTllWdndmOUUvTzNkNWsxMTlLUVlTbEJEQ01rZ1hGZW9kVTdTRGRtSFRJSmRUQ2hiSE9qcHpwenN6UmdzeS9GUlZtUzJpL2JvYytGWjAwRVJQRHc9PQo="
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/Calyndrae/RemielleDesktopAgent/releases/download/v0.1.4/Remielle.Desktop.Agent_0.1.4_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRYzU0dGp0bk85VDA1M0JWRTlvRzRqQkt6ZzA0RGRwZ0twakFPR0x1MWVQZzBnOWJlMlhkcFAzVFk0ckVYd3JZK1dZSS9JUU1LbC90R1VhaEtybGJiSS83WlY0YThad3dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTg0MDY5CWZpbGU6UmVtaWVsbGUgRGVza3RvcCBBZ2VudF8wLjEuNF94NjQtc2V0dXAuZXhlClQ3VWZmbE5nb2hMdUx2QkJ4Yjlremd5ZlZOQ2FuNVUwSVc5UWwxTGgyb21yT3MrR2Q2WFJGdHM5c085eHNQMUovNld5NkU2TE00L3Uxc0ZFbFNFdUR3PT0K"
+    },
+    "windows-aarch64": {
+      "url": "https://github.com/Calyndrae/RemielleDesktopAgent/releases/download/v0.1.4/Remielle.Desktop.Agent_0.1.4_arm64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRYzU0dGp0bk85VHpmQnZpRlJma1pkMmxUZ3Rxc2tEL3MrbXlVbUw0V2FMQWE4ZHByazd3QVFxKzRQZFI3T0xjZTJRMjB6eFEyUUt1VDIyMzhiMWNKT1Z4eThxSUdZWUFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg3MTg0MDY4CWZpbGU6UmVtaWVsbGUgRGVza3RvcCBBZ2VudF8wLjEuNF9hcm02NC1zZXR1cC5leGUKV3phOURGS0h5bWxsSk93MEx1NTdRazRvLzh6VzNVU0JNbjhIN1JEbVBMR1VnZ3doRUFUUXIvYWE3UzdIaHdwR25ZaENHNmpGLzRYelY2T2R1UDZUQ2c9PQo="
+    }
+  }
+}
