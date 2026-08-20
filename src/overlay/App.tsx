@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 
 import { ipc, type OverlayGeometry } from "@/lib/ipc";
@@ -14,6 +15,7 @@ import { attachSettingsSync } from "@/state/sync";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbient } from "./useAmbient";
 import { effectiveLocale, getMessages, type Locale } from "@/i18n";
+import { readSetting, writeSetting } from "@/lib/persist";
 import type { PackManifest } from "@/types/pack";
 import { ChatPanel } from "./chat/ChatPanel";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -112,6 +114,30 @@ export function App() {
       /* A window that refuses the level is still a usable window. */
     });
   }, [alwaysOnTop]);
+
+  // The first launch of a new version announces itself: the updater works
+  // quietly, and quiet has a failure mode — the user picked 下次再说, the
+  // update applied on the next launch, and nothing anywhere said so. She
+  // says it herself, in the same bubble her unprompted lines use. A fixed
+  // sentence rather than a model call: this must work with no key, no
+  // network and no budget, or the one moment it exists for goes unmarked.
+  useEffect(() => {
+    void (async () => {
+      const version = await getVersion();
+      const previous = await readSetting<string | null>("lastRunVersion", null);
+      if (previous && previous !== version) {
+        void ipc.frontendNote(`updater: first run of v${version} (was v${previous})`);
+        // A beat after boot, so she has appeared and settled first; skipped
+        // if the user has already opened the panel to talk.
+        setTimeout(() => {
+          if (useChatStore.getState().phase === "closed") {
+            useAmbientStore.getState().say(`更新好了 —— 现在是 v${version} 的我。`);
+          }
+        }, 8000);
+      }
+      await writeSetting("lastRunVersion", version);
+    })();
+  }, []);
 
   // One update check per launch, after the stores have hydrated so the
   // setting is respected. Fire-and-forget: a failed check is a log line, not
