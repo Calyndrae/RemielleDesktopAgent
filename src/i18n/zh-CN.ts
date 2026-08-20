@@ -127,6 +127,9 @@ export const zhCN = {
       /** Bilingual on purpose: the label must be findable in the wrong language. */
       languageLabel: "语言 / Language",
       languageAuto: "跟随系统",
+      /** Each language's own name, identical in every catalog — findable no matter what is set. */
+      languageChinese: "中文",
+      languageEnglish: "English",
       languageHint: "只翻译应用自己的界面。她说的话是她自己的，不做翻译。",
       sizeLabel: "大小",
       sizeHint:
@@ -208,6 +211,18 @@ export const zhCN = {
         "下次打开聊天时可以一键接着聊。只保留最近一次，不会攒成档案。" +
         "关掉这个开关会同时删掉已经存下的那一份。",
     },
+    update: {
+      title: "保持最新",
+      autoUpdateLabel: "每次打开时自动更新",
+      autoUpdateHint:
+        "开着的时候，每次启动会向 GitHub 问一次有没有新版本，装好后问你要不要重启。" +
+        "除了下载本身，什么都不会发出去。",
+      checkNow: "现在检查",
+      checking: "正在查…",
+      installed: (version: string) => `v${version} 已装好，重启后生效`,
+      upToDate: (version: string) => `已经是最新（v${version}）`,
+      checkFailed: (cause: string) => `没查成：${cause}`,
+    },
     uninstall: {
       title: "把她请走",
       note:
@@ -286,6 +301,8 @@ export const zhCN = {
 
     openers: ["查点最近的消息", "帮我看段代码"],
     setupGreeting: "还差一步。",
+    /** A failed model fetch, folded into the setup line with this language's stop. */
+    setupError: (title: string, hint: string) => `${title}。${hint}`,
     setupNeedKey: "给我一个 API 密钥，我们就可以开始了。",
     setupPickModel: "选一个模型，我们就可以开始了。",
     setupNoModels: "服务商没有给出任何模型，看看设置里的服务商和地址对不对。",
@@ -325,6 +342,10 @@ export const zhCN = {
     handoffPersona: "【它被设定的角色】",
     handoffHistory: "【已有对话】",
     handoffContinue: "【请从这里继续】",
+    /** One turn of the handoff transcript; the colon is the language's own. */
+    handoffTurn: (speaker: string, text: string) => `${speaker}：${text}`,
+    importTooNew: (version: string) =>
+      `这个存档来自更新的版本（schema ${version}），当前版本读不了。`,
   },
   /** Plain-language versions of typed errors, keyed by their Rust kinds. */
   errors: {

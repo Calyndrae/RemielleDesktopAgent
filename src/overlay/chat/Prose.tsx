@@ -9,6 +9,7 @@ import { visit } from "unist-util-visit";
 import type { Root, Text, Parent } from "mdast";
 
 import type { ToolActivity } from "@/lib/ipc";
+import { useMessages } from "@/i18n/useLocale";
 import { Icon } from "./icons";
 
 /** The citation variant of ToolActivity, once the filter has done its work. */
@@ -154,6 +155,7 @@ function hostOf(url: string): string {
  * place, a globe stands in for the icon.
  */
 function CitationChip({ n, source }: { n: number; source: Citation }) {
+  const m = useMessages();
   const [iconFailed, setIconFailed] = useState(false);
   const icon = faviconFor(source.url);
 
@@ -162,7 +164,7 @@ function CitationChip({ n, source }: { n: number; source: Citation }) {
       type="button"
       className="cite"
       title={`${source.title}\n${hostOf(source.url)}`}
-      aria-label={`来源 ${n}：${source.title}`}
+      aria-label={m.chat.sourceChip(n, source.title)}
       onClick={() => void openUrl(source.url)}
     >
       {icon && !iconFailed ? (

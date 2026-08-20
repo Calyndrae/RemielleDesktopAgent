@@ -113,6 +113,8 @@ export const en: Messages = {
         "Only affects the chat panel on the desktop. This settings window follows the system anyway.",
       languageLabel: "Language / 语言",
       languageAuto: "Follow the system",
+      languageChinese: "中文",
+      languageEnglish: "English",
       languageHint:
         "Only the app's own controls translate. What she says is hers, in her own words.",
       sizeLabel: "Size",
@@ -197,6 +199,17 @@ export const en: Messages = {
         "and the next time you open the chat you can pick it up with one tap. Only the latest one is kept; it never grows into an archive. " +
         "Turning the switch off also deletes the copy already stored.",
     },
+    update: {
+      title: "Staying current",
+      autoUpdateLabel: "Update automatically on launch",
+      autoUpdateHint:
+        "While this is on, every launch asks GitHub once whether there is a new version, installs it, and then asks you about restarting. Beyond the download itself, nothing is sent anywhere.",
+      checkNow: "Check now",
+      checking: "Checking…",
+      installed: (version: string) => `v${version} installed — takes effect after a restart`,
+      upToDate: (version: string) => `Already up to date (v${version})`,
+      checkFailed: (cause: string) => `The check didn't go through: ${cause}`,
+    },
     uninstall: {
       title: "Seeing her off",
       note:
@@ -274,6 +287,7 @@ export const en: Messages = {
 
     openers: ["Check the latest news", "Look at some code with me"],
     setupGreeting: "One step to go.",
+    setupError: (title: string, hint: string) => (hint ? `${title}. ${hint}` : `${title}.`),
     setupNeedKey: "Give me an API key and we can start.",
     setupPickModel: "Pick a model and we can start.",
     setupNoModels:
@@ -308,6 +322,9 @@ export const en: Messages = {
     handoffPersona: "[The persona it was given]",
     handoffHistory: "[The conversation so far]",
     handoffContinue: "[Please continue from here]",
+    handoffTurn: (speaker: string, text: string) => `${speaker}: ${text}`,
+    importTooNew: (version: string) =>
+      `This archive comes from a newer version (schema ${version}) and this build cannot read it.`,
   },
   errors: {
     keyIssue: {

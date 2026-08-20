@@ -14,6 +14,8 @@
 
 import { readSetting, writeSetting } from "@/lib/persist";
 import type { ChatMessage } from "@/state/chat";
+import type { Messages } from "@/i18n";
+import { zhCN } from "@/i18n/zh-CN";
 
 const KEY = "lastSession";
 
@@ -73,12 +75,16 @@ export async function loadLastSession(): Promise<StoredSession | null> {
 }
 
 /** "3 分钟前" / "昨天" — how long ago the stored conversation was left. */
-export function describeAge(savedAt: number, now = Date.now()): string {
+export function describeAge(
+  savedAt: number,
+  time: Messages["time"] = zhCN.time,
+  now = Date.now(),
+): string {
   const minutes = Math.floor((now - savedAt) / 60_000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return time.justNow;
+  if (minutes < 60) return time.minutesAgo(minutes);
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return time.hoursAgo(hours);
   const days = Math.floor(hours / 24);
-  return days === 1 ? "昨天" : `${days} 天前`;
+  return days === 1 ? time.yesterday : time.daysAgo(days);
 }

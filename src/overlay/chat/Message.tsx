@@ -2,6 +2,7 @@ import { memo, useLayoutEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { describeError, type ApiError, type ToolActivity } from "@/lib/ipc";
+import { useMessages } from "@/i18n/useLocale";
 import { Prose } from "./Prose";
 import {
   reasoningSummary,
@@ -49,6 +50,7 @@ function MetaStrip({
   reasoning: string;
   thinking: boolean;
 }) {
+  const m = useMessages();
   const [open, setOpen] = useState<"tools" | "reasoning" | null>(null);
 
   const queries = tools.filter((t) => t.kind === "search");
@@ -74,7 +76,7 @@ function MetaStrip({
           >
             <Icon.Globe size={13} className="meta__icon" />
             <span className="meta__label">
-              {queries.length > 0 ? "联网搜索" : "参考了网页"}
+              {queries.length > 0 ? m.chat.searchedWeb : m.chat.referencedPages}
             </span>
             {sources.length > 0 && <span className="meta__count">{sources.length}</span>}
           </button>
@@ -92,7 +94,9 @@ function MetaStrip({
             // The gist without expanding, for anyone who hovers.
             title={reasoning ? reasoningSummary(reasoning) : undefined}
           >
-            <span className="meta__label">{thinking ? "思考中…" : "思考过程"}</span>
+            <span className="meta__label">
+              {thinking ? m.chat.thinking : m.chat.thoughtProcess}
+            </span>
           </button>
         )}
       </div>
@@ -147,7 +151,8 @@ function MetaStrip({
 
 /** A failed turn, with the specific remedy rather than "something went wrong". */
 function ErrorRow({ error }: { error: ApiError }) {
-  const { title, hint } = describeError(error);
+  const m = useMessages();
+  const { title, hint } = describeError(error, m);
   return (
     <div className="turn-error">
       <p className="turn-error__title">{title}</p>
@@ -157,13 +162,14 @@ function ErrorRow({ error }: { error: ApiError }) {
         className="turn-error__retry"
         onClick={() => useChatStore.getState().regenerate()}
       >
-        重试
+        {m.chat.retryTurn}
       </button>
     </div>
   );
 }
 
 function ActionRow({ message }: { message: ChatMessage }) {
+  const m = useMessages();
   const [copied, setCopied] = useState(false);
   const streaming = useChatStore((s) => s.streaming);
   const text = message.chunks.join("");
@@ -204,8 +210,8 @@ function ActionRow({ message }: { message: ChatMessage }) {
         type="button"
         className={`actions__btn${copied ? " actions__btn--active" : ""}`}
         onClick={() => void copy()}
-        title={copied ? "已复制" : "复制"}
-        aria-label={copied ? "已复制" : "复制"}
+        title={copied ? m.chat.copied : m.chat.copy}
+        aria-label={copied ? m.chat.copied : m.chat.copy}
       >
         {copied ? <Icon.Check size={15} /> : <Icon.Copy size={15} />}
       </button>
@@ -214,15 +220,15 @@ function ActionRow({ message }: { message: ChatMessage }) {
         className="actions__btn"
         disabled={streaming}
         onClick={() => useChatStore.getState().regenerate()}
-        title="重新生成"
-        aria-label="重新生成"
+        title={m.chat.regenerate}
+        aria-label={m.chat.regenerate}
       >
         <Icon.Regenerate size={15} />
       </button>
       {showTokens && message.usage && (
         <span
           className="actions__tokens"
-          title={`这条：输入 ${message.usage.prompt}，输出 ${message.usage.completion}`}
+          title={m.chat.messageUsage(message.usage.prompt, message.usage.completion)}
         >
           {message.usage.total} tok
         </span>
@@ -283,6 +289,7 @@ export const Message = memo(function Message({
   message,
   isLatestAssistant,
 }: MessageProps) {
+  const m = useMessages();
   const text = message.chunks.join("");
 
   if (message.role === "user") {
@@ -309,7 +316,7 @@ export const Message = memo(function Message({
       {message.error ? (
         <ErrorRow error={message.error} />
       ) : message.status === "cancelled" && empty ? (
-        <div className="prose prose--muted">已停止</div>
+        <div className="prose prose--muted">{m.chat.stopped}</div>
       ) : (
         /*
          * One renderer for streaming and settled text. Re-parsing the whole

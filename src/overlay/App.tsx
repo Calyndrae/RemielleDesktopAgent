@@ -14,7 +14,7 @@ import { useSpriteStore } from "@/state/sprite";
 import { attachSettingsSync } from "@/state/sync";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbient } from "./useAmbient";
-import { effectiveLocale, getMessages, type Locale } from "@/i18n";
+import { useMessages } from "@/i18n/useLocale";
 import { readSetting, writeSetting } from "@/lib/persist";
 import type { PackManifest } from "@/types/pack";
 import { ChatPanel } from "./chat/ChatPanel";
@@ -35,10 +35,7 @@ export function App() {
   const [pack, setPack] = useState<PackManifest | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const languageSetting = useConfigStore((s) => s.language);
-  const locale: Locale = effectiveLocale(languageSetting, navigator.language);
-
-  const messages = getMessages(locale);
+  const messages = useMessages();
 
   // Everything she does unprompted: changing pose, and dozing off when left
   // alone. Both stand down while the panel is open.

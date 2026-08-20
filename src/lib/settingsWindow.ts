@@ -1,5 +1,8 @@
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+import { effectiveLocale, getMessages } from "@/i18n";
+import { useConfigStore } from "@/state/config";
+
 const LABEL = "settings";
 
 /**
@@ -18,9 +21,15 @@ export async function openSettings(): Promise<void> {
     return;
   }
 
+  // The creation-time title in the current UI language; the settings window
+  // itself re-titles on later language changes, since it owns the setting.
+  const messages = getMessages(
+    effectiveLocale(useConfigStore.getState().language, navigator.language),
+  );
+
   const window = new WebviewWindow(LABEL, {
     url: "settings.html",
-    title: "设置 — 蕾米埃尔",
+    title: messages.settings.windowTitle,
     width: 720,
     height: 640,
     minWidth: 560,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { platform } from "@tauri-apps/plugin-os";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /**
  * Which storage story the key hint tells. Resolved once — the platform does
@@ -30,7 +31,7 @@ import { clearLastSession } from "@/lib/lastSession";
 import { applyTheme, watchSystemTheme } from "@/lib/theme";
 import { useAmbientStore } from "@/state/ambient";
 import { MAX_SCALE, MIN_SCALE, useSpriteStore } from "@/state/sprite";
-import { effectiveLocale } from "@/i18n";
+import { useLocale, useMessages } from "@/i18n/useLocale";
 import { attachSettingsSync } from "@/state/sync";
 import { useToolLogStore } from "@/state/toolLog";
 import {
@@ -75,12 +76,12 @@ function comboFrom(event: React.KeyboardEvent): string | null {
   return [...mods, name].join("+");
 }
 
-const TOOL_GROUPS: ReadonlyArray<[ToolSpec["group"], string]> = [
-  ["herself", "她自己"],
-  ["system", "这台电脑"],
-  ["media", "正在放的东西"],
-  ["window", "你眼前的窗口"],
-  ["apps", "别的应用"],
+const TOOL_GROUPS: ReadonlyArray<ToolSpec["group"]> = [
+  "herself",
+  "system",
+  "media",
+  "window",
+  "apps",
 ];
 
 type KeyState =
@@ -139,7 +140,8 @@ export function SettingsApp() {
   const ambient = useAmbientStore();
   const sprite = useSpriteStore();
   const toolLog = useToolLogStore((s) => s.entries);
-  const locale = effectiveLocale(config.language, navigator.language);
+  const locale = useLocale();
+  const m = useMessages();
   const blocked = useAmbientStore((s) => (s.hydrated ? ambientBlock(s.runtime, s.settings, new Date()) : null));
 
   useEffect(() => {
@@ -175,12 +177,24 @@ export function SettingsApp() {
     void ipc.keyHint(SEARCH_ACCOUNT).then(setSearchKeyHint).catch(() => setSearchKeyHint(null));
   }, []);
 
+  // The OS window title is chrome too: it was written at creation time in
+  // whatever language was current, so a language change has to re-title it.
+  // Guarded because the layout harness mounts this component in a plain
+  // browser where the Tauri bridge is absent.
+  useEffect(() => {
+    try {
+      void getCurrentWindow().setTitle(m.settings.windowTitle).catch(() => {});
+    } catch {
+      /* not running under Tauri */
+    }
+  }, [m]);
+
   const saveSearchKey = async () => {
     const key = searchKeyInput.trim();
     const engineId = config.searchEngineId.trim();
     if (!key) return;
     if (!engineId) {
-      setSearchKeyState({ status: "failed", message: "先填搜索引擎 ID，两个要一起用" });
+      setSearchKeyState({ status: "failed", message: m.settings.behaviour.searchNeedsEngineId });
       return;
     }
 
@@ -205,8 +219,8 @@ export function SettingsApp() {
       setSearchKeyState({
         status: "failed",
         message: message.includes("Custom Search")
-          ? "这个密钥的 Google Cloud 项目还没启用 Custom Search JSON API —— 去控制台把它打开再试。没存这个密钥。"
-          : `试了一次搜索，失败了：${message} —— 没存这个密钥。`,
+          ? m.settings.behaviour.searchApiDisabled
+          : m.settings.behaviour.searchVerifyFailed(message),
       });
     }
   };
@@ -315,19 +329,19 @@ export function SettingsApp() {
   };
 
   if (!config.hydrated) {
-    return <main className="settings"><p className="muted">载入中…</p></main>;
+    return <main className="settings"><p className="muted">{m.settings.loading}</p></main>;
   }
 
   return (
     <main className="settings">
-      <h1 className="settings__title">设置</h1>
+      <h1 className="settings__title">{m.settings.title}</h1>
 
       {/* ---------- provider ---------- */}
       <section className="group">
-        <h2 className="group__title">模型服务</h2>
+        <h2 className="group__title">{m.settings.provider.title}</h2>
 
         <label className="field">
-          <span className="field__label">服务商</span>
+          <span className="field__label">{m.settings.provider.providerLabel}</span>
           <select
             className="control"
             value={config.provider}
@@ -338,18 +352,18 @@ export function SettingsApp() {
             {config.providers.map((info) => (
               <option key={info.id} value={info.id}>
                 {info.label}
-                {config.configured.includes(info.id) ? "（已配置）" : ""}
+                {config.configured.includes(info.id) ? m.settings.provider.configuredSuffix : ""}
               </option>
             ))}
           </select>
           <span className="field__hint">
-            打勾的表示已经配置好，可以直接用。
+            {m.settings.provider.providerHint}
           </span>
         </label>
 
         {(config.provider === "custom" || config.baseUrl) && (
           <label className="field">
-            <span className="field__label">服务地址</span>
+            <span className="field__label">{m.settings.provider.baseUrlLabel}</span>
             <input
               className="control"
               type="text"
@@ -359,20 +373,20 @@ export function SettingsApp() {
                 useConfigStore.getState().patch({ baseUrl: event.target.value })
               }
             />
-            <span className="field__hint">留空则使用服务商默认地址。</span>
+            <span className="field__hint">{m.settings.provider.baseUrlHint}</span>
           </label>
         )}
 
         {provider?.requiresKey && (
           <div className="field">
-            <span className="field__label">API 密钥</span>
+            <span className="field__label">{m.settings.provider.apiKeyLabel}</span>
 
             {storedForProvider ? (
               <div className="keyrow">
-                <code className="keyrow__hint">{hint ?? "已存储"}</code>
-                <span className="badge badge--ok">已保存在系统凭据管理器</span>
+                <code className="keyrow__hint">{hint ?? m.settings.provider.keyStored}</code>
+                <span className="badge badge--ok">{m.settings.provider.keyInStore}</span>
                 <button type="button" className="btn" onClick={() => void removeKey()}>
-                  删除
+                  {m.settings.provider.removeKey}
                 </button>
               </div>
             ) : null}
@@ -383,7 +397,9 @@ export function SettingsApp() {
                 type="password"
                 value={keyInput}
                 placeholder={
-                  storedForProvider ? "输入新密钥以替换" : provider.keyPrefix ?? "粘贴密钥"
+                  storedForProvider
+                    ? m.settings.provider.keyPlaceholderReplace
+                    : provider.keyPrefix ?? m.settings.provider.keyPlaceholder
                 }
                 autoComplete="off"
                 spellCheck={false}
@@ -406,31 +422,33 @@ export function SettingsApp() {
                 disabled={!keyInput.trim() || keyState.status === "verifying"}
                 onClick={() => void saveKey()}
               >
-                {keyState.status === "verifying" ? "验证中…" : "验证并保存"}
+                {keyState.status === "verifying"
+                  ? m.settings.provider.verifying
+                  : m.settings.provider.verifyAndSave}
               </button>
             </div>
 
             {formatIssue && (
-              <p className="note note--warn">{describeKeyIssue(formatIssue)}</p>
+              <p className="note note--warn">{describeKeyIssue(formatIssue, m)}</p>
             )}
             {keyState.status === "ok" && (
               <p className="note note--ok">
-                验证通过，找到 {keyState.models} 个可用模型。
+                {m.settings.provider.keyVerified(keyState.models)}
               </p>
             )}
             {keyState.status === "failed" && (
               <p className="note note--bad">
-                <strong>{describeError(keyState.error).title}</strong>
-                {describeError(keyState.error).hint && (
-                  <> —— {describeError(keyState.error).hint}</>
+                <strong>{describeError(keyState.error, m).title}</strong>
+                {describeError(keyState.error, m).hint && (
+                  <> —— {describeError(keyState.error, m).hint}</>
                 )}
               </p>
             )}
 
             <span className="field__hint">
               {onMac
-                ? "密钥存在这台电脑上一个只有你的账户能读的文件里 —— 不走钥匙串，不会弹密码框。界面永远读不回密钥内容，只知道它存不存在。"
-                : "密钥保存在 Windows 凭据管理器（DPAPI），绑定你的 Windows 账户 —— 复制到别的机器解不开。界面永远读不回密钥内容，只知道它存不存在。"}
+                ? m.settings.provider.keyStorageHintMac
+                : m.settings.provider.keyStorageHintWindows}
               {provider.docsUrl && (
                 <>
                   {" "}
@@ -439,7 +457,7 @@ export function SettingsApp() {
                     className="linkbtn"
                     onClick={() => void openUrl(provider.docsUrl)}
                   >
-                    去哪里拿密钥？
+                    {m.settings.provider.whereToGetKey}
                   </button>
                 </>
               )}
@@ -448,7 +466,7 @@ export function SettingsApp() {
         )}
 
         <label className="field">
-          <span className="field__label">模型</span>
+          <span className="field__label">{m.settings.provider.modelLabel}</span>
           <div className="keyrow">
             <select
               className="control"
@@ -459,7 +477,11 @@ export function SettingsApp() {
               }
             >
               <option value="">
-                {loadingModels ? "读取中…" : models.length ? "选择模型" : "先配置密钥"}
+                {loadingModels
+                  ? m.settings.provider.modelLoading
+                  : models.length
+                    ? m.settings.provider.modelChoose
+                    : m.settings.provider.modelNeedsKey}
               </option>
               {models.map((model) => (
                 <option key={model} value={model}>
@@ -468,12 +490,12 @@ export function SettingsApp() {
               ))}
             </select>
             <button type="button" className="btn" onClick={() => void refresh()}>
-              刷新
+              {m.settings.provider.refresh}
             </button>
           </div>
           {modelsError && (
             <span className="note note--bad">
-              {describeError(modelsError).title} —— {describeError(modelsError).hint}
+              {describeError(modelsError, m).title} —— {describeError(modelsError, m).hint}
             </span>
           )}
         </label>
@@ -481,11 +503,12 @@ export function SettingsApp() {
 
       {/* ---------- behaviour ---------- */}
       <section className="group">
-        <h2 className="group__title">回答方式</h2>
+        <h2 className="group__title">{m.settings.behaviour.title}</h2>
 
         <label className="field">
           <span className="field__label">
-            发散程度 <span className="field__value">{config.temperature.toFixed(1)}</span>
+            {m.settings.behaviour.temperatureLabel}{" "}
+            <span className="field__value">{config.temperature.toFixed(1)}</span>
           </span>
           <input
             className="control control--range"
@@ -498,7 +521,7 @@ export function SettingsApp() {
               useConfigStore.getState().patch({ temperature: Number(event.target.value) })
             }
           />
-          <span className="field__hint">越低越稳妥、越高越跳脱。</span>
+          <span className="field__hint">{m.settings.behaviour.temperatureHint}</span>
         </label>
 
         <div className="field">
@@ -511,12 +534,12 @@ export function SettingsApp() {
                 useConfigStore.getState().patch({ webSearch: event.target.checked })
               }
             />
-            <span>允许联网搜索</span>
+            <span>{m.settings.behaviour.webSearchLabel}</span>
           </label>
           <span className="field__hint">
             {nativeSearch
-              ? "开启后，她可以在回答前查资料。用过的搜索词和网页会显示在回复上方，随时可以点开核对。聊天框里也有开关，可以单次临时关掉。"
-              : "开启后她就能查资料，不用你再配什么：她先搜，拿到结果自己挑一条打开、读完再回答。默认查的是维基百科和一些公开词条，够应付「这是什么」这类问题。用过的网页会显示在回复上方。"}
+              ? m.settings.behaviour.webSearchHintNative
+              : m.settings.behaviour.webSearchHintFallback}
           </span>
         </div>
 
@@ -529,19 +552,19 @@ export function SettingsApp() {
         */}
         {!nativeSearch && (
           <div className="field">
-            <span className="field__label">想让她搜全网？（可选）</span>
+            <span className="field__label">{m.settings.behaviour.customSearchLabel}</span>
             <span className="field__hint">
-              上面那个开关已经能用了，不填这里也不影响。
-              区别只是搜的范围：默认查维基百科、公开词条和新闻，填了这两项就是 Google 全网。
-              要去 Google Cloud 开 Custom Search JSON API 拿密钥，再建一个搜索引擎拿 ID ——
-              有点麻烦，所以做成可选的。就算这套哪天失效了，她也会自动退回默认那套，不会因此搜不了。
-              密钥和其他密钥一样存在系统钥匙串里，不进网页层。
+              {m.settings.behaviour.customSearchHint}
             </span>
 
             <input
               className="control"
               type="password"
-              placeholder={searchKeyHint ? `已保存 ${searchKeyHint}` : "搜索 API 密钥"}
+              placeholder={
+                searchKeyHint
+                  ? m.settings.behaviour.searchKeySavedPlaceholder(searchKeyHint)
+                  : m.settings.behaviour.searchKeyPlaceholder
+              }
               value={searchKeyInput}
               onChange={(event) => setSearchKeyInput(event.target.value)}
               autoComplete="off"
@@ -550,7 +573,7 @@ export function SettingsApp() {
             <input
               className="control"
               type="text"
-              placeholder="搜索引擎 ID（cx）"
+              placeholder={m.settings.behaviour.engineIdPlaceholder}
               value={config.searchEngineId}
               onChange={(event) =>
                 useConfigStore.getState().patch({ searchEngineId: event.target.value })
@@ -565,11 +588,11 @@ export function SettingsApp() {
                 disabled={!searchKeyInput.trim()}
                 onClick={() => void saveSearchKey()}
               >
-                保存密钥
+                {m.settings.behaviour.saveSearchKey}
               </button>
               {searchKeyHint && (
                 <button type="button" className="btn" onClick={() => void removeSearchKey()}>
-                  删除密钥
+                  {m.settings.behaviour.removeSearchKey}
                 </button>
               )}
               <button
@@ -579,14 +602,14 @@ export function SettingsApp() {
                   void openUrl("https://programmablesearchengine.google.com/controlpanel/all")
                 }
               >
-                去哪里拿这两个？
+                {m.settings.behaviour.whereToGetSearch}
               </button>
             </div>
             {searchKeyState.status === "verifying" && (
-              <span className="field__hint">正在试一次搜索…</span>
+              <span className="field__hint">{m.settings.behaviour.searchVerifying}</span>
             )}
             {searchKeyState.status === "ok" && (
-              <span className="field__hint">好了，试了一次，能搜到东西。之后她会用全网搜索。</span>
+              <span className="field__hint">{m.settings.behaviour.searchVerified}</span>
             )}
             {searchKeyState.status === "failed" && (
               <span className="field__hint" style={{ color: "var(--danger)" }}>
@@ -597,10 +620,9 @@ export function SettingsApp() {
         )}
 
         <div className="field">
-          <span className="field__label">关于你（可选）</span>
+          <span className="field__label">{m.settings.behaviour.profileLabel}</span>
           <span className="field__hint">
-            每一项都有自己的开关，关着就一个字都不会发。下面的预览就是发出去的原文 ——
-            她对你的了解，以读得到的文字为准，不用猜。
+            {m.settings.behaviour.profileHint}
           </span>
 
           <label className="switch">
@@ -613,12 +635,12 @@ export function SettingsApp() {
                 })
               }
             />
-            <span>告诉她怎么称呼你</span>
+            <span>{m.settings.behaviour.callMeToggle}</span>
           </label>
           <input
             className="control"
             type="text"
-            placeholder="想让她怎么叫你"
+            placeholder={m.settings.behaviour.callMePlaceholder}
             value={config.profile.callMe}
             onChange={(event) =>
               useConfigStore.getState().patch({
@@ -637,7 +659,7 @@ export function SettingsApp() {
                 })
               }
             />
-            <span>告诉她你的时区</span>
+            <span>{m.settings.behaviour.timezoneToggle}</span>
           </label>
 
           <label className="switch">
@@ -650,13 +672,13 @@ export function SettingsApp() {
                 })
               }
             />
-            <span>再补充一点背景</span>
+            <span>{m.settings.behaviour.aboutToggle}</span>
           </label>
           <textarea
             className="control control--area"
             rows={3}
             maxLength={MAX_ABOUT_CHARS}
-            placeholder="职业、爱好、正在忙什么……写你愿意让她知道的"
+            placeholder={m.settings.behaviour.aboutPlaceholder}
             value={config.profile.about}
             onChange={(event) =>
               useConfigStore.getState().patch({
@@ -672,8 +694,8 @@ export function SettingsApp() {
           */}
           <span className="field__hint">
             {composeProfileBlock(config.profile)
-              ? "每次新消息都会附上这段："
-              : "现在这一节什么都不会发送。"}
+              ? m.settings.behaviour.profilePreviewOn
+              : m.settings.behaviour.profilePreviewOff}
           </span>
           {composeProfileBlock(config.profile) && (
             <pre className="profile-preview">{composeProfileBlock(config.profile)}</pre>
@@ -681,7 +703,7 @@ export function SettingsApp() {
         </div>
 
         <label className="field">
-          <span className="field__label">额外要求（可选）</span>
+          <span className="field__label">{m.settings.behaviour.extraLabel}</span>
           {/*
             Was 「说话方式」 while the voice text lived here as the default —
             which meant clearing the box silenced her manner, and one user met
@@ -691,9 +713,7 @@ export function SettingsApp() {
             state rather than a mistake.
           */}
           <span className="field__hint">
-            她是谁、怎么说话，都写在程序里，改不掉也不会丢 ——
-            这台桌宠从动画到名字都是她。这里是给她的额外要求：
-            比如「回答尽量短」「多用英文」。留空最常见，她还是她。
+            {m.settings.behaviour.extraHint}
           </span>
           <textarea
             className="control control--area"
@@ -707,15 +727,15 @@ export function SettingsApp() {
       </section>
 
       <section className="group">
-        <h2 className="group__title">角色</h2>
+        <h2 className="group__title">{m.settings.character.title}</h2>
 
         <div className="field">
-          <span className="field__label">聊天框配色</span>
+          <span className="field__label">{m.settings.character.themeLabel}</span>
           <div className="segmented">
             {([
-              ["auto", "跟随系统"],
-              ["light", "浅色"],
-              ["dark", "深色"],
+              ["auto", m.settings.character.themeAuto],
+              ["light", m.settings.character.themeLight],
+              ["dark", m.settings.character.themeDark],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -731,19 +751,19 @@ export function SettingsApp() {
             ))}
           </div>
           <span className="field__hint">
-            只影响桌面上那个聊天框。这个设置窗口本来就跟着系统走。
+            {m.settings.character.themeHint}
           </span>
         </div>
 
         <div className="field">
           <span className="field__label">
-            {locale === "en" ? "Language / 语言" : "语言 / Language"}
+            {m.settings.character.languageLabel}
           </span>
           <div className="segmented">
             {([
-              ["auto", locale === "en" ? "Follow the system" : "跟随系统"],
-              ["zh-CN", "中文"],
-              ["en", "English"],
+              ["auto", m.settings.character.languageAuto],
+              ["zh-CN", m.settings.character.languageChinese],
+              ["en", m.settings.character.languageEnglish],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
@@ -759,15 +779,14 @@ export function SettingsApp() {
             ))}
           </div>
           <span className="field__hint">
-            {locale === "en"
-              ? "Only the app's own controls translate. What she says is hers, in her own words."
-              : "只翻译应用自己的界面。她说的话是她自己的，不做翻译。"}
+            {m.settings.character.languageHint}
           </span>
         </div>
 
         <label className="field">
           <span className="field__label">
-            大小 <span className="field__value">{Math.round(sprite.scale * 100)}%</span>
+            {m.settings.character.sizeLabel}{" "}
+            <span className="field__value">{Math.round(sprite.scale * 100)}%</span>
           </span>
           <input
             className="control"
@@ -781,8 +800,7 @@ export function SettingsApp() {
             }
           />
           <span className="field__hint">
-            在桌面上把滚轮滚到她身上也可以调，这里只是把那件事写出来。
-            改动会立刻反映到桌面上。
+            {m.settings.character.sizeHint}
           </span>
           {sprite.scale !== 1 && (
             <div className="keyrow">
@@ -791,7 +809,7 @@ export function SettingsApp() {
                 className="btn"
                 onClick={() => useSpriteStore.getState().setScale(1)}
               >
-                恢复原始大小
+                {m.settings.character.resetSize}
               </button>
             </div>
           )}
@@ -804,7 +822,7 @@ export function SettingsApp() {
               checked={sprite.pinned}
               onChange={(event) => useSpriteStore.getState().setPinned(event.target.checked)}
             />
-            <span>定住位置（拖不动）</span>
+            <span>{m.settings.character.pinLabel}</span>
           </label>
         </div>
 
@@ -817,16 +835,15 @@ export function SettingsApp() {
                 useSpriteStore.getState().setAlwaysOnTop(event.target.checked)
               }
             />
-            <span>浮在其他窗口之上</span>
+            <span>{m.settings.character.onTopLabel}</span>
           </label>
           <span className="field__hint">
-            打游戏时想让她让开，可以在这里关掉，或者直接跟她说一声 ——
-            前提是下面「改变自己是否浮在全屏应用之上」开着。
+            {m.settings.character.onTopHint}
           </span>
         </div>
 
         <div className="field">
-          <span className="field__label">一键叫她出来</span>
+          <span className="field__label">{m.settings.character.summonLabel}</span>
           <div className="shortcutrow">
             <button
               type="button"
@@ -850,8 +867,8 @@ export function SettingsApp() {
               onBlur={() => setCapturingShortcut(false)}
             >
               {capturingShortcut
-                ? "按下你想用的组合…"
-                : (sprite.summonShortcut ?? "录一个快捷键")}
+                ? m.settings.character.summonCapturing
+                : (sprite.summonShortcut ?? m.settings.character.summonRecord)}
             </button>
             {sprite.summonShortcut && !capturingShortcut && (
               <button
@@ -864,14 +881,14 @@ export function SettingsApp() {
                   });
                 }}
               >
-                清除
+                {m.settings.character.summonClear}
               </button>
             )}
           </div>
           <span className="field__hint">
             {shortcutError
-              ? `这个组合注册不上（可能被别的程序占了）：${shortcutError}`
-              : "在任何应用里按这个组合，她都会现身并打开聊天框。需要带修饰键，比如 Ctrl+Shift+R。"}
+              ? m.settings.character.shortcutTaken(shortcutError)
+              : m.settings.character.shortcutHint}
           </span>
         </div>
 
@@ -883,26 +900,22 @@ export function SettingsApp() {
               disabled={autostartBusy}
               onChange={(event) => void toggleAutostart(event.target.checked)}
             />
-            <span>开机时自动出现</span>
+            <span>{m.settings.character.autostartLabel}</span>
           </label>
           <span className="field__hint">
-            这一项写在系统里，不在她自己的设置里，所以你在系统设置的「登录项」里
-            关掉它，这里也会跟着变。要是勾了之后又自己跳回来，多半是系统没让写 ——
-            换个位置再试试，别把程序放在下载文件夹里。
+            {m.settings.character.autostartHint}
           </span>
         </div>
       </section>
 
       <section className="group">
-        <h2 className="group__title">她能做什么</h2>
+        <h2 className="group__title">{m.settings.tools.title}</h2>
         <p className="group__note">
-          这些是她唯一能对这台电脑做的事，一条一条写死在程序里 ——
-          没打开的那一条，她连「有这个东西」都不知道，所以不存在「说服她去用」这回事。
-          她不能自己写命令，只能从这张表里挑，参数也只能从固定选项里选。
+          {m.settings.tools.note}
         </p>
 
         {catalog.length === 0 ? (
-          <p className="field__hint">这个系统上没有可用的工具。</p>
+          <p className="field__hint">{m.settings.tools.none}</p>
         ) : (
           /*
             Grouped by what each tool touches, in a fixed order rather than
@@ -913,12 +926,12 @@ export function SettingsApp() {
             The groups come from the Rust catalog, so a tool added there appears
             here under the right heading without this file being edited.
           */
-          TOOL_GROUPS.map(([group, heading]) => {
+          TOOL_GROUPS.map((group) => {
             const inGroup = catalog.filter((tool) => tool.group === group);
             if (inGroup.length === 0) return null;
             return (
               <div className="toolgroup" key={group}>
-                <h3 className="toolgroup__title">{heading}</h3>
+                <h3 className="toolgroup__title">{m.settings.tools.groups[group]}</h3>
                 {inGroup.map((tool) => (
                   <div className="field" key={tool.name}>
                     <label className="switch">
@@ -934,7 +947,7 @@ export function SettingsApp() {
                       />
                       <span>{locale === "en" ? tool.userLabelEn : tool.userLabel}</span>
                       {tool.risk === "confirm" && (
-                        <span className="tag">每次都会先问你</span>
+                        <span className="tag">{m.settings.tools.confirmTag}</span>
                       )}
                     </label>
                   </div>
@@ -948,11 +961,10 @@ export function SettingsApp() {
                     switch above grants nothing, and says so.
                   */
                   <div className="field">
-                    <span className="field__label">她可以打开这些应用</span>
+                    <span className="field__label">{m.settings.tools.allowlistLabel}</span>
                     {config.appAllowlist.length === 0 ? (
                       <p className="field__hint">
-                        还没有添加任何应用 —— 上面的开关开着也打不开任何东西，
-                        直到你在这里选过。
+                        {m.settings.tools.allowlistEmpty}
                       </p>
                     ) : (
                       <ul className="applist">
@@ -972,7 +984,7 @@ export function SettingsApp() {
                                 });
                               }}
                             >
-                              移除
+                              {m.settings.tools.allowlistRemove}
                             </button>
                           </li>
                         ))}
@@ -995,7 +1007,7 @@ export function SettingsApp() {
                         });
                       }}
                     >
-                      添加应用…
+                      {m.settings.tools.allowlistAdd}
                     </button>
                   </div>
                 )}
@@ -1006,20 +1018,19 @@ export function SettingsApp() {
       </section>
 
       <section className="group">
-        <h2 className="group__title">她动过什么</h2>
+        <h2 className="group__title">{m.settings.ledger.title}</h2>
         <p className="group__note">
-          每次她真的动了这台电脑，都会记在这里 —— 只记做了什么和什么时候，
-          参数和结果一概不存。最多保留 100 条，旧的自动掉出去。
+          {m.settings.ledger.note}
         </p>
         {toolLog.length === 0 ? (
-          <p className="field__hint">还什么都没动过。</p>
+          <p className="field__hint">{m.settings.ledger.empty}</p>
         ) : (
           <>
             <ul className="ledger">
               {toolLog.map((entry) => (
                 <li className="ledger__row" key={`${entry.time}-${entry.summary}`}>
                   <span className="ledger__time">
-                    {new Date(entry.time).toLocaleString("zh-CN", {
+                    {new Date(entry.time).toLocaleString(locale, {
                       month: "2-digit",
                       day: "2-digit",
                       hour: "2-digit",
@@ -1027,7 +1038,7 @@ export function SettingsApp() {
                     })}
                   </span>
                   <span className="ledger__summary">{entry.summary}</span>
-                  {!entry.ok && <span className="tag">没成功</span>}
+                  {!entry.ok && <span className="tag">{m.settings.ledger.failedTag}</span>}
                 </li>
               ))}
             </ul>
@@ -1036,17 +1047,16 @@ export function SettingsApp() {
               className="btn"
               onClick={() => useToolLogStore.getState().clear()}
             >
-              清空记录
+              {m.settings.ledger.clear}
             </button>
           </>
         )}
       </section>
 
       <section className="group">
-        <h2 className="group__title">她自己会做的事</h2>
+        <h2 className="group__title">{m.settings.ambient.title}</h2>
         <p className="group__note">
-          没在聊天的时候，她会隔一阵子换个动作。聊天框一打开就全部停下 ——
-          你在跟她说话的时候，她不该自己在旁边动。
+          {m.settings.ambient.note}
         </p>
 
         <div className="field">
@@ -1058,25 +1068,29 @@ export function SettingsApp() {
                 useAmbientStore.getState().patch({ enabled: event.target.checked })
               }
             />
-            <span>让她偶尔自己动一下</span>
+            <span>{m.settings.ambient.enableLabel}</span>
           </label>
           {blocked && (
             <span className="field__hint">
               {blocked === "quiet"
-                ? "现在在免打扰时段里，所以她是安静的。"
+                ? m.settings.ambient.blockedQuiet
                 : blocked === "muted"
-                  ? "你今天让她别再打扰了，明天自动恢复。"
+                  ? m.settings.ambient.blockedMuted
                   : blocked === "capped"
-                    ? `今天已经到上限（${ambient.settings.dailyCap} 次）了。`
-                    : "已关闭。"}
+                    ? m.settings.ambient.blockedCapped(ambient.settings.dailyCap)
+                    : m.settings.ambient.blockedOff}
             </span>
           )}
         </div>
 
         <label className="field">
           <span className="field__label">
-            间隔 <span className="field__value">
-              {ambient.settings.minMinutes}–{ambient.settings.maxMinutes} 分钟
+            {m.settings.ambient.intervalLabel}{" "}
+            <span className="field__value">
+              {m.settings.ambient.intervalValue(
+                ambient.settings.minMinutes,
+                ambient.settings.maxMinutes,
+              )}
             </span>
           </span>
           <input
@@ -1114,7 +1128,7 @@ export function SettingsApp() {
         </label>
 
         <div className="field">
-          <span className="field__label">免打扰时段</span>
+          <span className="field__label">{m.settings.ambient.quietLabel}</span>
           <div className="keyrow">
             <input
               className="control"
@@ -1125,7 +1139,7 @@ export function SettingsApp() {
                 if (minute !== null) useAmbientStore.getState().patch({ quietFrom: minute });
               }}
             />
-            <span className="muted">到</span>
+            <span className="muted">{m.settings.ambient.quietTo}</span>
             <input
               className="control"
               type="time"
@@ -1137,13 +1151,16 @@ export function SettingsApp() {
             />
           </div>
           <span className="field__hint">
-            跨午夜是可以的，比如 22:00 到 08:00。两个时间相同表示不设免打扰。
+            {m.settings.ambient.quietHint}
           </span>
         </div>
 
         <label className="field">
           <span className="field__label">
-            每天最多 <span className="field__value">{ambient.settings.dailyCap} 次</span>
+            {m.settings.ambient.capLabel}{" "}
+            <span className="field__value">
+              {m.settings.ambient.capValue(ambient.settings.dailyCap)}
+            </span>
           </span>
           <input
             className="control"
@@ -1156,13 +1173,13 @@ export function SettingsApp() {
             }
           />
           <span className="field__hint">
-            今天已经用掉 {ambient.runtime.firedToday} 次。跨过零点自动归零。
+            {m.settings.ambient.capHint(ambient.runtime.firedToday)}
           </span>
         </label>
       </section>
 
       <section className="group">
-        <h2 className="group__title">聊天记录</h2>
+        <h2 className="group__title">{m.settings.history.title}</h2>
 
         <div className="field">
           <label className="switch">
@@ -1178,18 +1195,16 @@ export function SettingsApp() {
                 if (!keep) void clearLastSession();
               }}
             />
-            <span>保留上一次的对话</span>
+            <span>{m.settings.history.keepLabel}</span>
           </label>
           <span className="field__hint">
-            开启时，最近一次对话会存在这台电脑上（和这份设置放在一起，不会上传到任何地方），
-            下次打开聊天时可以一键接着聊。只保留最近一次，不会攒成档案。
-            关掉这个开关会同时删掉已经存下的那一份。
+            {m.settings.history.keepHint}
           </span>
         </div>
       </section>
 
       <section className="group">
-        <h2 className="group__title">保持最新</h2>
+        <h2 className="group__title">{m.settings.update.title}</h2>
         <div className="field">
           <label className="switch">
             <input
@@ -1199,11 +1214,10 @@ export function SettingsApp() {
                 useConfigStore.getState().patch({ autoUpdate: event.target.checked })
               }
             />
-            <span>每次打开时自动更新</span>
+            <span>{m.settings.update.autoUpdateLabel}</span>
           </label>
           <span className="field__hint">
-            开着的时候，每次启动会向 GitHub 问一次有没有新版本，装好后问你要不要重启。
-            除了下载本身，什么都不会发出去。
+            {m.settings.update.autoUpdateHint}
           </span>
         </div>
         <div className="field">
@@ -1219,26 +1233,24 @@ export function SettingsApp() {
                 .then((outcome) => {
                   setUpdateResult(
                     outcome.state === "installed"
-                      ? `v${outcome.version} 已装好，重启后生效`
-                      : `已经是最新（v${outcome.version}）`,
+                      ? m.settings.update.installed(outcome.version)
+                      : m.settings.update.upToDate(outcome.version),
                   );
                 })
-                .catch((cause) => setUpdateResult(`没查成：${String(cause)}`))
+                .catch((cause) => setUpdateResult(m.settings.update.checkFailed(String(cause))))
                 .finally(() => setUpdateChecking(false));
             }}
           >
-            {updateChecking ? "正在查…" : "现在检查"}
+            {updateChecking ? m.settings.update.checking : m.settings.update.checkNow}
           </button>
           {updateResult && <span className="field__hint">{updateResult}</span>}
         </div>
       </section>
 
       <section className="group">
-        <h2 className="group__title">把她请走</h2>
+        <h2 className="group__title">{m.settings.uninstall.title}</h2>
         <p className="group__note">
-          卸载会清掉她本体、API 密钥、设置和这里的所有记录。macOS 上这些先进废纸篓，
-          倒掉之前都找得回来；Windows 上会交给安装时附带的卸载器。
-          按下去会先再问你一次。
+          {m.settings.uninstall.note}
         </p>
         <div className="field">
           <button
@@ -1256,7 +1268,7 @@ export function SettingsApp() {
                 });
             }}
           >
-            {uninstalling ? "等你确认…" : "卸载…"}
+            {uninstalling ? m.settings.uninstall.waiting : m.settings.uninstall.button}
           </button>
           {uninstallError && (
             <span className="field__hint note--bad">{uninstallError}</span>
@@ -1265,8 +1277,7 @@ export function SettingsApp() {
       </section>
 
       <footer className="settings__footer">
-        非商业粉丝项目 · 角色 © HoYoverse《绝区零》 · 动画 森哈_Yeah · 素材包
-        ZanyZebra1127（CC BY-NC-SA 4.0）
+        {m.settings.footer}
       </footer>
     </main>
   );

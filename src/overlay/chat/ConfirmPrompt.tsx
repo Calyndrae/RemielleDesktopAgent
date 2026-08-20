@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { useChatStore } from "@/state/chat";
+import { useMessages } from "@/i18n/useLocale";
 
 /**
  * The one place she has to stop and ask.
@@ -20,6 +21,7 @@ import { useChatStore } from "@/state/chat";
  * is no path where silence starts something.
  */
 export function ConfirmPrompt() {
+  const m = useMessages();
   const pending = useChatStore((s) => s.confirm);
   const denyRef = useRef<HTMLButtonElement>(null);
 
@@ -43,9 +45,11 @@ export function ConfirmPrompt() {
   return (
     <div className="confirm" role="alertdialog" aria-labelledby="confirm-title">
       <p className="confirm__title" id="confirm-title">
-        她想{pending.label}
+        {m.chat.confirmTitle(pending.label)}
       </p>
-      {pending.detail && <p className="confirm__detail">范围：{pending.detail}</p>}
+      {pending.detail && (
+        <p className="confirm__detail">{m.chat.confirmScope(pending.detail)}</p>
+      )}
       <div className="confirm__row">
         <button
           ref={denyRef}
@@ -53,14 +57,14 @@ export function ConfirmPrompt() {
           className="confirm__btn"
           onClick={() => useChatStore.getState().answerConfirm(false)}
         >
-          不用
+          {m.chat.confirmDeny}
         </button>
         <button
           type="button"
           className="confirm__btn confirm__btn--go"
           onClick={() => useChatStore.getState().answerConfirm(true)}
         >
-          去吧
+          {m.chat.confirmAllow}
         </button>
       </div>
     </div>

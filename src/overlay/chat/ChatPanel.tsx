@@ -4,6 +4,7 @@ import { DEFAULT_FLIGHT, flightPose, poseToTransform } from "@/anim/parabola";
 import { ipc, type OverlayGeometry } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
 import { useChatStore } from "@/state/chat";
+import { useMessages } from "@/i18n/useLocale";
 import { getSpriteFrame } from "../spritePosition";
 import { useHitRegion } from "../hitRegions";
 import { Composer } from "./Composer";
@@ -80,6 +81,7 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ geometry }: ChatPanelProps) {
+  const m = useMessages();
   const phase = useChatStore((s) => s.phase);
   const messages = useChatStore((s) => s.messages);
   const sessionUsage = useChatStore((s) => s.sessionUsage);
@@ -354,12 +356,12 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
       onContextMenu={(event) => event.preventDefault()}
     >
       <header className="panel__header" onPointerDown={startDrag}>
-        <span className="panel__title">蕾米埃尔</span>
+        <span className="panel__title">{m.chat.panelTitle}</span>
         {/* Running cost, always visible rather than buried in a menu. */}
         {sessionUsage.total > 0 && (
           <span
             className="panel__tokens"
-            title={`本次会话：输入 ${sessionUsage.prompt} · 输出 ${sessionUsage.completion}`}
+            title={m.chat.sessionUsage(sessionUsage.prompt, sessionUsage.completion)}
           >
             {sessionUsage.total.toLocaleString()} tok
           </span>
@@ -368,8 +370,8 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
           type="button"
           className="iconbtn iconbtn--ghost"
           onClick={() => void openSettings()}
-          title="设置"
-          aria-label="设置"
+          title={m.chat.settings}
+          aria-label={m.chat.settings}
         >
           <Icon.Gear size={15} />
         </button>
@@ -377,8 +379,8 @@ export function ChatPanel({ geometry }: ChatPanelProps) {
           type="button"
           className="iconbtn iconbtn--ghost"
           onClick={() => useChatStore.getState().requestClose()}
-          title="关闭"
-          aria-label="关闭"
+          title={m.chat.close}
+          aria-label={m.chat.close}
         >
           <Icon.Close size={15} />
         </button>

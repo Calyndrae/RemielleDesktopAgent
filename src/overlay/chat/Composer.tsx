@@ -8,6 +8,8 @@ import { currentProvider, searchAvailable, useConfigStore } from "@/state/config
 import { ambientEmotePool, useAgentStore } from "@/state/agent";
 import { asApiError, describeError, ipc, type ApiError } from "@/lib/ipc";
 import { openSettings } from "@/lib/settingsWindow";
+import { pickLabel } from "@/i18n";
+import { useLocale, useMessages } from "@/i18n/useLocale";
 import { ContextMenu, type MenuItem } from "../ContextMenu";
 import { Icon } from "./icons";
 
@@ -15,6 +17,8 @@ import { Icon } from "./icons";
 const MAX_TEXTAREA_HEIGHT = 132;
 
 export function Composer() {
+  const m = useMessages();
+  const locale = useLocale();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const plusRef = useRef<HTMLButtonElement>(null);
   const modelRef = useRef<HTMLButtonElement>(null);
@@ -118,7 +122,12 @@ export function Composer() {
 
   const exportOptions = () => {
     const config = useConfigStore.getState();
-    return { model: config.model, provider: currentProvider(config)?.label ?? config.provider };
+    return {
+      model: config.model,
+      provider: currentProvider(config)?.label ?? config.provider,
+      // The scaffolding of an export follows the UI language.
+      messages: m,
+    };
   };
 
   const flash = (text: string) => useChatStore.getState().notify(text);
@@ -132,7 +141,7 @@ export function Composer() {
    */
   const modelItems: MenuItem[] =
     models === null
-      ? [{ id: "loading", label: "正在问服务商有哪些模型…", disabled: true, onSelect: () => {} }]
+      ? [{ id: "loading", label: m.chat.modelsLoading, disabled: true, onSelect: () => {} }]
       : !Array.isArray(models)
         ? models.error.kind === "noKey"
           ? [
@@ -140,21 +149,21 @@ export function Composer() {
                 // No key genuinely is a settings problem, and the item takes
                 // you there instead of just naming the destination.
                 id: "no-key",
-                label: "还没配密钥 —— 去设置里给我一个",
+                label: m.chat.modelsNoKey,
                 onSelect: () => void openSettings(),
               },
             ]
           : [
               {
                 id: "why",
-                label: describeError(models.error).title,
+                label: describeError(models.error, m).title,
                 disabled: true,
                 onSelect: () => {},
               },
               // The menu stays up through the retry, so the answer lands in
               // front of the user instead of behind a closed menu.
-              { id: "retry", label: "再试一次", keepOpen: true, onSelect: fetchModels },
-              { id: "open-settings", label: "其他设置…", onSelect: () => void openSettings() },
+              { id: "retry", label: m.chat.retry, keepOpen: true, onSelect: fetchModels },
+              { id: "open-settings", label: m.chat.otherSettings, onSelect: () => void openSettings() },
             ]
         : [
             ...(models.length === 0
@@ -162,7 +171,7 @@ export function Composer() {
                   {
                     // The call *worked* — the provider just offered nothing.
                     id: "none",
-                    label: "服务商没有给出任何模型",
+                    label: m.chat.modelsEmpty,
                     disabled: true,
                     onSelect: () => {},
                   },
@@ -173,12 +182,12 @@ export function Composer() {
                   checked: id === model,
                   onSelect: () => {
                     useConfigStore.getState().patch({ model: id });
-                    flash(`换成 ${id} 了`);
+                    flash(m.chat.modelSwitched(id));
                   },
                 }))),
             {
               id: "open-settings",
-              label: "其他设置…",
+              label: m.chat.otherSettings,
               onSelect: () => void openSettings(),
             },
           ];
@@ -204,7 +213,7 @@ export function Composer() {
   const slashRootItems: MenuItem[] = [
     {
       id: "cmd-emote",
-      label: "/emote — 换个动作（悬停试穿）",
+      label: m.chat.slashEmote,
       disabled: !pack || ambientEmotePool(pack).length === 0,
       onSelect: () => {
         // Selecting descends instead of closing; the menu re-renders with the
@@ -216,7 +225,7 @@ export function Composer() {
     },
     {
       id: "cmd-model",
-      label: "/model — 换个模型",
+      label: m.chat.slashModel,
       onSelect: () => {
         closeSlash();
         const box = modelRef.current?.getBoundingClientRect();
@@ -226,7 +235,7 @@ export function Composer() {
     },
     {
       id: "cmd-new",
-      label: "/new — 开始新对话",
+      label: m.chat.slashNew,
       disabled: messages.length === 0,
       onSelect: () => {
         closeSlash();
@@ -235,7 +244,7 @@ export function Composer() {
     },
     {
       id: "cmd-save",
-      label: "/save — 导出 JSON 存档",
+      label: m.chat.slashSave,
       disabled: !hasTranscript,
       onSelect: () => {
         closeSlash();
@@ -245,16 +254,16 @@ export function Composer() {
           includeReasoning: true,
         });
         void saveText(exportFilename("json"), text).then((ok) => {
-          if (ok) flash("已导出");
+          if (ok) flash(m.chat.exported);
         });
       },
     },
     {
       id: "cmd-help",
-      label: "/help — 这些命令都是什么",
+      label: m.chat.slashHelp,
       onSelect: () => {
         closeSlash();
-        flash("/emote 换动作 · /model 换模型 · /new 新对话 · /save 导出");
+        flash(m.chat.helpFlash);
       },
     },
   ].filter((item) => {
@@ -266,7 +275,7 @@ export function Composer() {
     ? [
         ...ambientEmotePool(pack).map((animation) => ({
           id: `emote-${animation.id}`,
-          label: animation.label["zh-CN"] ?? animation.label["en"] ?? animation.id,
+          label: pickLabel(animation.label, locale, animation.id),
           checked: useAgentStore.getState().emoteOverride === animation.id,
           // The hover preview IS the feature: she tries the pose on, at her
           // own position, at full size. A thumbnail could not compete.
@@ -281,7 +290,7 @@ export function Composer() {
         })),
         {
           id: "emote-reset",
-          label: "恢复默认动作",
+          label: m.chat.emoteReset,
           onHover: () => useAgentStore.getState().setEmoteOverride(null),
           onSelect: () => {
             useAgentStore.getState().setEmoteOverride(null);
@@ -298,27 +307,27 @@ export function Composer() {
   const menuItems: MenuItem[] = [
     {
       id: "copy-handoff",
-      label: "复制「接力」文本",
+      label: m.chat.copyHandoff,
       disabled: !hasTranscript,
       onSelect: () => {
         const text = exportSession(messages, { ...exportOptions(), format: "handoff" });
         void copyText(text).then((ok) =>
-          flash(ok ? "已复制，粘到别的助手即可接着聊" : "剪贴板被拒绝了"),
+          flash(ok ? m.chat.copiedHandoff : m.chat.clipboardRefused),
         );
       },
     },
     {
       id: "copy-markdown",
-      label: "复制为 Markdown",
+      label: m.chat.copyMarkdown,
       disabled: !hasTranscript,
       onSelect: () => {
         const text = exportSession(messages, { ...exportOptions(), format: "markdown" });
-        void copyText(text).then((ok) => flash(ok ? "已复制 Markdown" : "剪贴板被拒绝了"));
+        void copyText(text).then((ok) => flash(ok ? m.chat.copiedMarkdown : m.chat.clipboardRefused));
       },
     },
     {
       id: "save-json",
-      label: "导出 JSON 存档",
+      label: m.chat.saveJson,
       disabled: !hasTranscript,
       onSelect: () => {
         const text = exportSession(messages, {
@@ -327,13 +336,13 @@ export function Composer() {
           includeReasoning: true,
         });
         void saveText(exportFilename("json"), text).then((ok) => {
-          if (ok) flash("已导出");
+          if (ok) flash(m.chat.exported);
         });
       },
     },
     {
       id: "new-chat",
-      label: "开始新对话",
+      label: m.chat.newChat,
       disabled: messages.length === 0,
       onSelect: () => useChatStore.getState().reset(),
     },
@@ -346,7 +355,7 @@ export function Composer() {
           ref={textareaRef}
           className="composer__input"
           value={draft}
-          placeholder="和蕾米埃尔说点什么…"
+          placeholder={m.chat.placeholder}
           maxLength={MAX_INPUT_LENGTH}
           rows={1}
           onChange={(event) => useChatStore.getState().setDraft(event.target.value)}
@@ -371,8 +380,8 @@ export function Composer() {
             ref={plusRef}
             type="button"
             className={`iconbtn${menu ? " iconbtn--open" : ""}`}
-            title="导出与新对话"
-            aria-label="导出与新对话"
+            title={m.chat.exportMenuLabel}
+            aria-label={m.chat.exportMenuLabel}
             aria-haspopup="menu"
             aria-expanded={menu !== null}
             onClick={() => {
@@ -393,7 +402,7 @@ export function Composer() {
             ref={modelRef}
             type="button"
             className="modelpill"
-            title={`${providerLabel} · ${model || "未选择模型"} —— 点一下换模型`}
+            title={m.chat.modelPillTitle(providerLabel, model || m.chat.noModel)}
             onClick={() => {
               if (modelMenu) {
                 setModelMenu(null);
@@ -411,7 +420,7 @@ export function Composer() {
             }}
           >
             <span className="modelpill__name">{providerLabel}</span>
-            <span className="modelpill__variant">{model || "未选择模型"}</span>
+            <span className="modelpill__variant">{model || m.chat.noModel}</span>
             <Icon.ChevronDown size={12} className="modelpill__caret" />
           </button>
 
@@ -423,9 +432,9 @@ export function Composer() {
               className={`composer__counter${
                 remaining <= 0 ? " composer__counter--limit" : ""
               }`}
-              title={`最多 ${MAX_INPUT_LENGTH} 字`}
+              title={m.chat.counterTitle(MAX_INPUT_LENGTH)}
             >
-              还剩 {remaining} 字
+              {m.chat.counterRemaining(remaining)}
             </span>
           )}
 
@@ -440,16 +449,12 @@ export function Composer() {
               aria-pressed={webSearch}
               // The label has to move here rather than be hidden with CSS: the
               // span was the button's only accessible name.
-              aria-label={webSearch ? "联网搜索已开启" : "联网搜索已关闭"}
+              aria-label={webSearch ? m.chat.searchOnAria : m.chat.searchOffAria}
               onClick={() => useConfigStore.getState().patch({ webSearch: !webSearch })}
               // Says out loud that this is the same switch as the one in
               // Settings. Two controls for one value read as two features
               // unless one of them admits it.
-              title={
-                webSearch
-                  ? "联网搜索已开启，点击关闭（和设置里是同一个开关）"
-                  : "联网搜索已关闭，点击开启（和设置里是同一个开关）"
-              }
+              title={webSearch ? m.chat.searchOnTitle : m.chat.searchOffTitle}
             >
               {webSearch ? <Icon.Globe size={15} /> : <Icon.GlobeOff size={15} />}
             </button>
@@ -460,8 +465,8 @@ export function Composer() {
               type="button"
               className="sendbtn sendbtn--stop"
               onClick={() => useChatStore.getState().stop()}
-              title="停止生成"
-              aria-label="停止生成"
+              title={m.chat.stop}
+              aria-label={m.chat.stop}
             >
               <Icon.Stop size={16} />
             </button>
@@ -471,8 +476,8 @@ export function Composer() {
               className="sendbtn"
               disabled={!canSend}
               onClick={() => useChatStore.getState().send()}
-              title="发送"
-              aria-label="发送"
+              title={m.chat.send}
+              aria-label={m.chat.send}
             >
               <Icon.ArrowUp size={17} />
             </button>

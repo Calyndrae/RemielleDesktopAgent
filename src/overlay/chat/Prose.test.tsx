@@ -4,9 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Prose } from "./Prose";
 import type { ToolActivity } from "@/lib/ipc";
+import { useConfigStore } from "@/state/config";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 import { openUrl } from "@tauri-apps/plugin-opener";
+
+// The citation chip's accessible name comes from the UI catalog. Pinned to
+// Chinese explicitly: the default is "auto", and jsdom reports an English OS,
+// which would silently swap the catalog under these assertions.
+useConfigStore.setState({ language: "zh-CN" });
 
 const SOURCES: ToolActivity[] = [
   { kind: "search", query: "科技新闻" },

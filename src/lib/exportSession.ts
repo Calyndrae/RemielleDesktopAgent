@@ -16,6 +16,8 @@
  */
 
 import type { ChatMessage } from "@/state/chat";
+import type { Messages } from "@/i18n";
+import { zhCN } from "@/i18n/zh-CN";
 
 export type ExportFormat = "markdown" | "json" | "handoff";
 
@@ -27,6 +29,13 @@ export interface ExportOptions {
   provider?: string;
   /** Chain-of-thought is context, not content; off by default. */
   includeReasoning?: boolean;
+  /**
+   * Catalog for the scaffolding — headings, speaker names, the handoff
+   * instructions. The conversation itself leaves verbatim in whatever language
+   * it happened in; only the wrapper follows the UI language. Defaults to the
+   * reference catalog so plain-TypeScript callers and tests stay simple.
+   */
+  messages?: Messages;
 }
 
 /** Schema version for `json`. Bump when the shape changes incompatibly. */
@@ -44,25 +53,26 @@ function timestamp(ms: number): string {
 }
 
 function toMarkdown(messages: ChatMessage[], options: ExportOptions): string {
-  const lines: string[] = ["# 与蕾米埃尔的对话", ""];
+  const m = (options.messages ?? zhCN).export;
+  const lines: string[] = [m.markdownTitle, ""];
 
   if (options.model) {
     lines.push(`> ${options.provider ?? ""} · ${options.model}`.trim(), "");
   }
 
   for (const message of usable(messages)) {
-    lines.push(message.role === "user" ? "## 我" : "## 蕾米埃尔");
+    lines.push(message.role === "user" ? `## ${m.me}` : `## ${m.her}`);
 
     if (options.includeReasoning && message.reasoning.trim()) {
       // Blockquoted so it reads as an aside rather than part of the answer.
-      lines.push("", "> **思考过程**", ...message.reasoning.trim().split("\n").map((l) => `> ${l}`));
+      lines.push("", `> ${m.reasoningHeading}`, ...message.reasoning.trim().split("\n").map((l) => `> ${l}`));
     }
 
     lines.push("", text(message).trim());
 
     const sources = message.tools.filter((t) => t.kind === "citation");
     if (sources.length > 0) {
-      lines.push("", "**参考来源**");
+      lines.push("", m.sourcesHeading);
       for (const source of sources) {
         if (source.kind === "citation") lines.push(`- [${source.title}](${source.url})`);
       }
@@ -103,21 +113,19 @@ function toJson(messages: ChatMessage[], options: ExportOptions): string {
  * difference between it continuing the conversation and it summarising one.
  */
 function toHandoff(messages: ChatMessage[], options: ExportOptions): string {
-  const parts: string[] = [
-    "以下是我和另一个助手进行到一半的对话。请接着往下聊，不要重新开始，也不要复述已经说过的内容。",
-    "",
-  ];
+  const m = (options.messages ?? zhCN).export;
+  const parts: string[] = [m.handoffIntro, ""];
 
   if (options.systemPrompt?.trim()) {
-    parts.push("【它被设定的角色】", options.systemPrompt.trim(), "");
+    parts.push(m.handoffPersona, options.systemPrompt.trim(), "");
   }
 
-  parts.push("【已有对话】", "");
+  parts.push(m.handoffHistory, "");
   for (const message of usable(messages)) {
-    parts.push(`${message.role === "user" ? "我" : "助手"}：${text(message).trim()}`, "");
+    parts.push(m.handoffTurn(message.role === "user" ? m.me : m.assistant, text(message).trim()), "");
   }
 
-  parts.push("【请从这里继续】");
+  parts.push(m.handoffContinue);
   return parts.join("\n");
 }
 
@@ -140,7 +148,10 @@ export function exportFilename(format: ExportFormat, at = new Date()): string {
 }
 
 /** Parses a previously exported `json` session back into messages. */
-export function importSession(raw: string): {
+export function importSession(
+  raw: string,
+  catalog: Messages = zhCN,
+): {
   messages: Omit<ChatMessage, "id">[];
   systemPrompt: string | null;
   model: string | null;
@@ -149,9 +160,7 @@ export function importSession(raw: string): {
 
   const version = parsed["schemaVersion"];
   if (typeof version !== "number" || version > SESSION_SCHEMA_VERSION) {
-    throw new Error(
-      `这个存档来自更新的版本（schema ${String(version)}），当前版本读不了。`,
-    );
+    throw new Error(catalog.export.importTooNew(String(version)));
   }
 
   const rows = Array.isArray(parsed["messages"]) ? parsed["messages"] : [];

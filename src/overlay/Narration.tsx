@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { useAmbientStore } from "@/state/ambient";
 import { useChatStore } from "@/state/chat";
+import { useMessages } from "@/i18n/useLocale";
 import { getSpriteFrame } from "./spritePosition";
 import { useHitRegion } from "./hitRegions";
 
@@ -21,6 +22,7 @@ const HOLD_MS = 14_000;
 const GAP = 14;
 
 export function Narration() {
+  const m = useMessages();
   const narration = useAmbientStore((s) => s.narration);
   const panelOpen = useChatStore((s) => s.phase !== "closed");
   const ref = useRef<HTMLDivElement>(null);
@@ -97,7 +99,7 @@ export function Narration() {
             useChatStore.getState().openPanel();
           }}
         >
-          回她
+          {m.narration.reply}
         </button>
         <button
           type="button"
@@ -108,7 +110,7 @@ export function Narration() {
           // that.
           onClick={() => useAmbientStore.getState().muteForToday()}
         >
-          今天别再打扰我
+          {m.narration.muteToday}
         </button>
       </div>
     </div>

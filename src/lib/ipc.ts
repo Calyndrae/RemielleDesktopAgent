@@ -2,6 +2,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { PackManifest } from "@/types/pack";
+import type { Messages } from "@/i18n";
+import { zhCN } from "@/i18n/zh-CN";
 
 export interface OverlayGeometry {
   /** Work-area size in logical pixels — the overlay's CSS viewport. */
@@ -312,19 +314,29 @@ export type KeyFormatIssue =
   | { kind: "tooShort" }
   | { kind: "wrongPrefix"; detail: { expected: string } };
 
-/** Plain-language version of an offline key-format complaint. */
-export function describeKeyIssue(issue: KeyFormatIssue): string {
+/**
+ * Plain-language version of an offline key-format complaint.
+ *
+ * The catalog defaults to Simplified Chinese so plain-TypeScript callers and
+ * tests need no ceremony; components pass the current catalog from
+ * `useMessages()` so the wording follows the language setting.
+ */
+export function describeKeyIssue(
+  issue: KeyFormatIssue,
+  messages: Messages = zhCN,
+): string {
+  const m = messages.errors.keyIssue;
   switch (issue.kind) {
     case "empty":
-      return "还没有输入密钥。";
+      return m.empty;
     case "containsWhitespace":
-      return "密钥中间有空格，通常是复制时截断了。";
+      return m.containsWhitespace;
     case "looksLikeUrl":
-      return "这看起来是一个网址，不是密钥。";
+      return m.looksLikeUrl;
     case "tooShort":
-      return "密钥太短了，可能没复制完整。";
+      return m.tooShort;
     case "wrongPrefix":
-      return `这个服务商的密钥应该以 ${issue.detail.expected} 开头 —— 可能拿错了服务商的密钥。`;
+      return m.wrongPrefix(issue.detail.expected);
   }
 }
 
@@ -343,35 +355,39 @@ export function asApiError(error: unknown): ApiError {
 }
 
 /** Turns a typed provider error into something a person can act on. */
-export function describeError(error: ApiError): { title: string; hint: string } {
+export function describeError(
+  error: ApiError,
+  messages: Messages = zhCN,
+): { title: string; hint: string } {
+  const m = messages.errors.api;
   switch (error.kind) {
     case "invalidKey":
-      return { title: "密钥被拒绝", hint: "检查密钥是否复制完整，或是否已被吊销。" };
+      return { title: m.invalidKey.title, hint: m.invalidKey.hint };
     case "forbidden":
-      return { title: "没有权限", hint: "这个密钥可能没有该模型的访问权，或账户余额不足。" };
+      return { title: m.forbidden.title, hint: m.forbidden.hint };
     case "rateLimited": {
       const wait = error.detail.retryAfter;
       return {
-        title: "触发限流",
-        hint: wait ? `请等待约 ${wait} 秒后重试。` : "请稍后重试。",
+        title: m.rateLimitedTitle,
+        hint: wait ? m.rateLimitedWait(wait) : m.rateLimitedRetry,
       };
     }
     case "unknownModel":
-      return { title: "模型不可用", hint: `当前密钥无法使用 ${error.detail.model}。` };
+      return { title: m.unknownModelTitle, hint: m.unknownModelHint(error.detail.model) };
     case "network":
-      return { title: "连不上服务", hint: error.detail.message };
+      return { title: m.networkTitle, hint: error.detail.message };
     case "noKey":
-      return { title: "还没有配置密钥", hint: "在设置里添加一个 API 密钥。" };
+      return { title: m.noKey.title, hint: m.noKey.hint };
     case "unknownProvider":
-      return { title: "未知的服务商", hint: error.detail };
+      return { title: m.unknownProviderTitle, hint: error.detail };
     case "malformed":
-      return { title: "返回内容无法解析", hint: error.detail.message };
+      return { title: m.malformedTitle, hint: error.detail.message };
     case "upstream":
       return {
-        title: `服务返回错误 ${error.detail.status}`,
+        title: m.upstreamTitle(error.detail.status),
         hint: error.detail.message,
       };
     case "cancelled":
-      return { title: "已取消", hint: "" };
+      return { title: m.cancelledTitle, hint: "" };
   }
 }

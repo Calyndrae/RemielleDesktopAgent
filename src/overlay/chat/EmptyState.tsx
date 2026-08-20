@@ -5,6 +5,7 @@ import { describeAge, loadLastSession, type StoredSession } from "@/lib/lastSess
 import { openSettings } from "@/lib/settingsWindow";
 import { useChatStore } from "@/state/chat";
 import { isReady, useConfigStore } from "@/state/config";
+import { useMessages } from "@/i18n/useLocale";
 import { Icon } from "./icons";
 
 /**
@@ -24,9 +25,9 @@ import { Icon } from "./icons";
  * range, leaving an orphan on its own row; and each one has to earn its place
  * by showing a capability you would not otherwise guess at. "随便聊聊" and
  * "解释一个概念" demonstrated nothing — they are the generic assistant-chip
- * filler that every AI app ships.
+ * filler that every AI app ships. The pair lives in the catalogs (chat.openers)
+ * so it follows the UI language.
  */
-const OPENERS = ["查点最近的消息", "帮我看段代码"];
 
 /**
  * Shown until a provider and model are actually usable.
@@ -41,6 +42,7 @@ const OPENERS = ["查点最近的消息", "帮我看段代码"];
  * answer a one-tap question no chat app answers that way.
  */
 function SetupPrompt() {
+  const m = useMessages();
   const hasKey = useConfigStore((s) => s.configured.includes(s.provider));
   const [models, setModels] = useState<string[] | { error: ApiError } | null>(null);
 
@@ -65,17 +67,17 @@ function SetupPrompt() {
       <div className="empty__mark">
         <Icon.Mark size={30} />
       </div>
-      <p className="empty__greeting">还差一步。</p>
+      <p className="empty__greeting">{m.chat.setupGreeting}</p>
       <p className="empty__sub">
         {!hasKey
-          ? "给我一个 API 密钥，我们就可以开始了。"
+          ? m.chat.setupNeedKey
           : models === null
-            ? "正在问服务商有哪些模型…"
+            ? m.chat.modelsLoading
             : failed
-              ? `${describeError(failed).title}。${describeError(failed).hint}`
+              ? m.chat.setupError(describeError(failed, m).title, describeError(failed, m).hint)
               : empty
-                ? "服务商没有给出任何模型，看看设置里的服务商和地址对不对。"
-                : "选一个模型，我们就可以开始了。"}
+                ? m.chat.setupNoModels
+                : m.chat.setupPickModel}
       </p>
       <div className="empty__openers">
         {hasKey &&
@@ -92,7 +94,7 @@ function SetupPrompt() {
           ))}
         {hasKey && failed && (
           <button type="button" className="opener opener--primary" onClick={fetchModels}>
-            再试一次
+            {m.chat.retry}
           </button>
         )}
         {/* Settings is the fix for a missing key, and the escape hatch
@@ -102,7 +104,7 @@ function SetupPrompt() {
           className={`opener${hasKey ? "" : " opener--primary"}`}
           onClick={() => void openSettings()}
         >
-          打开设置
+          {m.chat.openSettings}
         </button>
       </div>
     </div>
@@ -110,6 +112,7 @@ function SetupPrompt() {
 }
 
 export function EmptyState() {
+  const m = useMessages();
   const ready = useConfigStore(isReady);
   const hydrated = useConfigStore((s) => s.hydrated);
   const historyMode = useConfigStore((s) => s.historyMode);
@@ -139,7 +142,7 @@ export function EmptyState() {
         <Icon.Mark size={30} />
       </div>
 
-      <p className="empty__greeting">又见面了。</p>
+      <p className="empty__greeting">{m.chat.greeting}</p>
       {/*
         This line used to read "这次打算聊点什么？" — which asks the same
         question the composer's placeholder asks, sixty pixels below it. Saying
@@ -148,9 +151,7 @@ export function EmptyState() {
         setting rather than a fixed claim.
       */}
       <p className="empty__sub">
-        {historyMode === "keep"
-          ? "聊天记录只存在这台电脑上，可以在设置里关掉。"
-          : "已设为不保存，关掉这个窗口就没了。"}
+        {historyMode === "keep" ? m.chat.historyKeptNote : m.chat.historyDiscardNote}
       </p>
 
       <div className="empty__openers">
@@ -160,10 +161,10 @@ export function EmptyState() {
             className="opener opener--resume"
             onClick={() => useChatStore.getState().restore(previous.messages)}
           >
-            接着上次聊（{describeAge(previous.savedAt)}）
+            {m.chat.resumeLast(describeAge(previous.savedAt, m.time))}
           </button>
         )}
-        {OPENERS.map((opener) => (
+        {m.chat.openers.map((opener) => (
           <button
             key={opener}
             type="button"
@@ -183,7 +184,7 @@ export function EmptyState() {
         start of every single conversation, which is more often than most apps
         manage to show their disclaimer at all.
       */}
-      <p className="empty__note">我也会出错，要紧的事记得核对。</p>
+      <p className="empty__note">{m.chat.fallibleNote}</p>
     </div>
   );
 }
