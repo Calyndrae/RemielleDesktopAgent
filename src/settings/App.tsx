@@ -183,7 +183,13 @@ export function SettingsApp() {
   // browser where the Tauri bridge is absent.
   useEffect(() => {
     try {
-      void getCurrentWindow().setTitle(m.settings.windowTitle).catch(() => {});
+      // Not a silent catch: this exact call once failed for want of a
+      // capability and the swallow hid it through a whole release of
+      // "instant language switching". A titled window that will not
+      // re-title is worth one log line.
+      void getCurrentWindow()
+        .setTitle(m.settings.windowTitle)
+        .catch((cause) => void ipc.frontendNote(`settings: setTitle failed: ${String(cause)}`));
     } catch {
       /* not running under Tauri */
     }
